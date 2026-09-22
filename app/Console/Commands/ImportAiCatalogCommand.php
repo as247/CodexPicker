@@ -11,18 +11,6 @@ use Illuminate\Support\Str;
 
 class ImportAiCatalogCommand extends Command
 {
-    /**
-     * OpenRouter is not fully described in all.json, so it is defined here.
-     */
-    private const OPENROUTER_PROVIDER = [
-        'slug' => 'openrouter',
-        'name' => 'OpenRouter',
-        'api' => 'https://openrouter.ai/api/v1',
-        'doc' => 'https://openrouter.ai/models',
-        'npm' => '@openrouter/ai-sdk-provider',
-        'env' => ['OPENROUTER_API_KEY'],
-    ];
-
     protected $signature = 'ai:import
         {--source=both : all, openrouter or both}
         {--path= : Base directory containing all.json and openrouter.json}';
@@ -81,54 +69,8 @@ class ImportAiCatalogCommand extends Command
             $rows = [];
             $now = now();
 
-            foreach ($provider['models'] ?? [] as $model) {
-                $limit = $model['limit'] ?? [];
-                $cost = $model['cost'] ?? [];
-                $reasoningOptions = collect((array) ($model['reasoning_options'] ?? []))
-                    ->filter(fn (array $option): bool => ($option['type'] ?? null) === 'effort')
-                    ->flatMap(fn (array $option): array => $option['values'] ?? [])
-                    ->values()
-                    ->all();
-                $defaultEffort = in_array('medium', $reasoningOptions, true)
-                    ? 'medium'
-                    : ($reasoningOptions[0] ?? null);
-
-                $rows[] = [
-                    'provider_id' => $providerModel->id,
-                    'model_key' => $model['id'],
-                    'name' => $model['name'] ?? $model['id'],
-                    'description' => $model['description'] ?? null,
-                    'family' => $model['family'] ?? null,
-                    'context_window' => $limit['context'] ?? null,
-                    'max_output_tokens' => $limit['output'] ?? null,
-                    'modalities' => json_encode($model['modalities'] ?? null),
-                    'reasoning' => (bool) ($model['reasoning'] ?? false),
-                    'reasoning_mandatory' => false,
-                    'reasoning_default_effort' => $defaultEffort,
-                    'reasoning_efforts' => $reasoningOptions !== [] ? json_encode($reasoningOptions) : null,
-                    'reasoning_options' => isset($model['reasoning_options']) ? json_encode($model['reasoning_options']) : null,
-                    'supported_parameters' => null,
-                    'structured_output' => (bool) ($model['structured_output'] ?? false),
-                    'temperature' => (bool) ($model['temperature'] ?? false),
-                    'tool_call' => (bool) ($model['tool_call'] ?? false),
-                    'attachment' => (bool) ($model['attachment'] ?? false),
-                    'open_weights' => (bool) ($model['open_weights'] ?? false),
-                    'cost_input' => isset($cost['input']) ? (string) $cost['input'] : null,
-                    'cost_output' => isset($cost['output']) ? (string) $cost['output'] : null,
-                    'status' => $model['status'] ?? null,
-                    'release_date' => $model['release_date'] ?? null,
-                    'last_updated' => $model['last_updated'] ?? null,
-                    'knowledge' => isset($model['knowledge']) ? (string) $model['knowledge'] : null,
-                    'source' => 'all',
-                    'raw' => json_encode($this->stripMapped($model, [
-                        'id', 'name', 'description', 'family', 'attachment', 'reasoning',
-                        'tool_call', 'release_date', 'last_updated', 'modalities',
-                        'open_weights', 'limit', 'cost', 'knowledge', 'status',
-                        'structured_output', 'temperature', 'reasoning_options',
-                    ])),
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ];
+            foreach ($provider['models'] as $modelKey => $model) {
+                $rows[] = $this->mapAllModel($model, $providerModel->id, $now, $modelKey);
             }
 
             DB::transaction(function () use ($rows): void {
@@ -136,14 +78,7 @@ class ImportAiCatalogCommand extends Command
                     AiModel::upsert(
                         $chunk,
                         ['provider_id', 'model_key'],
-                        [
-                            'name', 'description', 'family', 'context_window', 'max_output_tokens',
-                            'modalities', 'reasoning', 'reasoning_mandatory', 'reasoning_default_effort',
-                            'reasoning_efforts', 'reasoning_options', 'supported_parameters',
-                            'structured_output', 'temperature', 'tool_call', 'attachment', 'open_weights',
-                            'cost_input', 'cost_output', 'status', 'release_date', 'last_updated',
-                            'knowledge', 'source', 'raw', 'updated_at',
-                        ],
+                        $this->upsertColumns(),
                     );
                 }
             });
@@ -154,6 +89,74 @@ class ImportAiCatalogCommand extends Command
                 count($rows),
             ));
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $model
+     * @return array<string, mixed>
+     */
+    private function mapAllModel(array $model, int $providerId, string $now, string $modelKey): array
+    {
+        $limit = (array) ($model['limit'] ?? []);
+        $cost = (array) ($model['cost'] ?? []);
+        $reasoningOptions = $model['reasoning_options'] ?? null;
+        $efforts = collect((array) $reasoningOptions)
+            ->filter(fn (array $option): bool => ($option['type'] ?? null) === 'effort')
+            ->flatMap(fn (array $option): array => $option['values'] ?? [])
+            ->values()
+            ->all();
+        $defaultEffort = in_array('medium', $efforts, true)
+            ? 'medium'
+            : ($efforts[0] ?? null);
+
+        return [
+            'provider_id' => $providerId,
+            'model_key' => $modelKey,
+            'name' => $model['name'] ?? $model['id'],
+            'description' => $model['description'] ?? null,
+            'family' => $model['family'] ?? null,
+            'modalities' => isset($model['modalities']) ? json_encode($model['modalities']) : null,
+            'type' => $model['type'] ?? null,
+            'context_window' => $limit['context'] ?? null,
+            'limit_input' => $limit['input'] ?? null,
+            'max_output_tokens' => $limit['output'] ?? null,
+            'reasoning' => (bool) ($model['reasoning'] ?? false),
+            'reasoning_options' => $reasoningOptions !== null ? json_encode($reasoningOptions) : null,
+            'reasoning_default_effort' => $defaultEffort,
+            'reasoning_efforts' => $efforts !== [] ? json_encode($efforts) : null,
+            'reasoning_mandatory' => false,
+            'reasoning_interleaved' => isset($model['interleaved']) ? json_encode($model['interleaved']) : null,
+            'structured_output' => (bool) ($model['structured_output'] ?? false),
+            'temperature' => (bool) ($model['temperature'] ?? false),
+            'tool_call' => (bool) ($model['tool_call'] ?? false),
+            'attachment' => (bool) ($model['attachment'] ?? false),
+            'open_weights' => (bool) ($model['open_weights'] ?? false),
+            'cost_input' => $cost['input'] ?? null,
+            'cost_output' => $cost['output'] ?? null,
+            'cost_cache_read' => $cost['cache_read'] ?? null,
+            'cost_cache_write' => isset($cost['cache_write']) && is_scalar($cost['cache_write']) ? $cost['cache_write'] : null,
+            'cost_input_audio' => $cost['input_audio'] ?? null,
+            'cost_output_audio' => $cost['output_audio'] ?? null,
+            'cost_reasoning' => $cost['reasoning'] ?? null,
+            'cost_context_over_200k' => isset($cost['context_over_200k']) ? json_encode($cost['context_over_200k']) : null,
+            'cost_tiers' => isset($cost['tiers']) ? json_encode($cost['tiers']) : null,
+            'experimental' => isset($model['experimental']) ? json_encode($model['experimental']) : null,
+            'provider_overrides' => isset($model['provider']) ? json_encode($model['provider']) : null,
+            'supported_parameters' => null,
+            'default_parameters' => null,
+            'benchmarks' => null,
+            'pricing' => null,
+            'canonical_slug' => null,
+            'links' => null,
+            'alias_target' => null,
+            'status' => $model['status'] ?? null,
+            'release_date' => $model['release_date'] ?? null,
+            'last_updated' => $model['last_updated'] ?? null,
+            'knowledge' => isset($model['knowledge']) ? (string) $model['knowledge'] : null,
+            'source' => 'all',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ];
     }
 
     private function importOpenrouter(string $path): void
@@ -169,10 +172,7 @@ class ImportAiCatalogCommand extends Command
         $payload = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
         $models = $payload['data'] ?? [];
 
-        $provider = AiProvider::query()->updateOrCreate(
-            ['slug' => self::OPENROUTER_PROVIDER['slug']],
-            collect(self::OPENROUTER_PROVIDER)->except('slug')->all(),
-        );
+        $provider = $this->openrouterProvider();
 
         $existing = AiModel::query()
             ->where('provider_id', $provider->id)
@@ -187,7 +187,12 @@ class ImportAiCatalogCommand extends Command
                 $modelKey = $attributes['model_key'];
 
                 if (($id = $existing->get($modelKey)) !== null) {
-                    $this->mergeIntoExisting(AiModel::query()->findOrFail($id), $attributes);
+                    $model = AiModel::query()->where('id', $id)->first();
+
+                    if ($model !== null) {
+                        $this->mergeIntoExisting($model, $attributes);
+                    }
+
                     $merged++;
 
                     continue;
@@ -199,6 +204,24 @@ class ImportAiCatalogCommand extends Command
         });
 
         $this->line("  openrouter: {$created} created, {$merged} merged with all.json entries.");
+    }
+
+    private function openrouterProvider(): AiProvider
+    {
+        // OpenRouter may be absent from all.json; fall back to this definition.
+        $fallback = [
+            'slug' => 'openrouter',
+            'name' => 'OpenRouter',
+            'api' => 'https://openrouter.ai/api/v1',
+            'doc' => 'https://openrouter.ai/models',
+            'npm' => '@openrouter/ai-sdk-provider',
+            'env' => ['OPENROUTER_API_KEY'],
+        ];
+
+        return AiProvider::query()->firstOrCreate(
+            ['slug' => 'openrouter'],
+            collect($fallback)->except('slug')->all(),
+        );
     }
 
     /**
@@ -214,7 +237,6 @@ class ImportAiCatalogCommand extends Command
         $parameters = $model['supported_parameters'] ?? [];
         $efforts = array_values((array) ($reasoning['supported_efforts'] ?? []));
         $defaultEffort = $reasoning['default_effort'] ?? null;
-
         $inputModalities = $architecture['input_modalities'] ?? ['text'];
 
         return [
@@ -223,21 +245,23 @@ class ImportAiCatalogCommand extends Command
             'name' => $model['name'] ?? $model['id'],
             'description' => $model['description'] ?? null,
             'family' => null,
-            'context_window' => $model['context_length'] ?? $topProvider['context_length'] ?? null,
-            'max_output_tokens' => $topProvider['max_completion_tokens'] ?? null,
-            'modalities' => json_encode([
+            'modalities' => [
                 'input' => $inputModalities,
                 'output' => $architecture['output_modalities'] ?? ['text'],
-            ]),
+            ],
+            'type' => null,
+            'context_window' => $model['context_length'] ?? $topProvider['context_length'] ?? null,
+            'limit_input' => null,
+            'max_output_tokens' => $topProvider['max_completion_tokens'] ?? null,
             // OpenRouter signals reasoning via mandatory reasoning or supported parameters.
             'reasoning' => (bool) ($reasoning['mandatory'] ?? false)
                 || in_array('reasoning', $parameters, true)
                 || in_array('include_reasoning', $parameters, true),
-            'reasoning_mandatory' => (bool) ($reasoning['mandatory'] ?? false),
-            'reasoning_default_effort' => $defaultEffort,
-            'reasoning_efforts' => $efforts !== [] ? json_encode($efforts) : null,
             'reasoning_options' => null,
-            'supported_parameters' => json_encode($parameters),
+            'reasoning_default_effort' => $defaultEffort,
+            'reasoning_efforts' => $efforts !== [] ? $efforts : null,
+            'reasoning_mandatory' => (bool) ($reasoning['mandatory'] ?? false),
+            'reasoning_interleaved' => null,
             'structured_output' => in_array('structured_outputs', $parameters, true),
             'temperature' => in_array('temperature', $parameters, true),
             'tool_call' => in_array('tools', $parameters, true),
@@ -247,6 +271,22 @@ class ImportAiCatalogCommand extends Command
             // OpenRouter pricing is per token; columns store per million tokens like all.json.
             'cost_input' => isset($pricing['prompt']) ? (string) ((float) $pricing['prompt'] * 1_000_000) : null,
             'cost_output' => isset($pricing['completion']) ? (string) ((float) $pricing['completion'] * 1_000_000) : null,
+            'cost_cache_read' => isset($pricing['input_cache_read']) ? (string) ((float) $pricing['input_cache_read'] * 1_000_000) : null,
+            'cost_cache_write' => $this->cacheWriteCost($pricing),
+            'cost_input_audio' => $this->scaledPrice($pricing['audio'] ?? null),
+            'cost_output_audio' => $this->scaledPrice($pricing['audio_output'] ?? null),
+            'cost_reasoning' => $this->scaledPrice($pricing['internal_reasoning'] ?? null),
+            'cost_context_over_200k' => null,
+            'cost_tiers' => null,
+            'experimental' => null,
+            'provider_overrides' => null,
+            'supported_parameters' => $parameters,
+            'default_parameters' => $model['default_parameters'] ?? null,
+            'benchmarks' => $model['benchmarks'] ?? null,
+            'pricing' => $pricing,
+            'canonical_slug' => $model['canonical_slug'] ?? null,
+            'links' => $model['links'] ?? null,
+            'alias_target' => $model['alias_target'] ?? null,
             'status' => $this->openrouterStatus($model),
             'release_date' => isset($model['created'])
                 ? Carbon::createFromTimestamp((int) $model['created'])->toDateString()
@@ -254,56 +294,77 @@ class ImportAiCatalogCommand extends Command
             'last_updated' => null,
             'knowledge' => isset($model['knowledge_cutoff']) ? (string) $model['knowledge_cutoff'] : null,
             'source' => 'openrouter',
-            'raw' => json_encode(['openrouter' => $this->stripMapped($model, ['id'])]),
-            'created_at' => now(),
-            'updated_at' => now(),
         ];
     }
 
     /**
-     * Fill only null fields from the all.json row, and merge the OpenRouter
-     * payload into raw so nothing from either source is lost.
+     * @param  array<string, mixed>  $pricing
+     */
+    private function cacheWriteCost(array $pricing): ?string
+    {
+        $write = $pricing['input_cache_write'] ?? $pricing['input_cache_write_1h'] ?? null;
+
+        return $write !== null ? (string) ((float) $write * 1_000_000) : null;
+    }
+
+    private function scaledPrice(mixed $price): ?string
+    {
+        return $price !== null ? (string) ((float) $price * 1_000_000) : null;
+    }
+
+    /**
+     * Fill only null fields from the all.json row; OpenRouter stays the
+     * authoritative source for its own pricing and capabilities.
      *
      * @param  array<string, mixed>  $attributes
      */
     private function mergeIntoExisting(AiModel $model, array $attributes): void
     {
-        $rawAll = $model->raw ?? [];
-        $rawOr = json_decode((string) $attributes['raw'], true) ?? [];
-
         $updates = [];
 
-        foreach (['description', 'family', 'context_window', 'max_output_tokens', 'modalities',
-            'reasoning', 'reasoning_mandatory', 'reasoning_default_effort', 'reasoning_efforts',
-            'reasoning_options', 'supported_parameters', 'structured_output', 'temperature',
-            'tool_call', 'attachment', 'open_weights', 'cost_input', 'cost_output',
-            'status', 'release_date', 'last_updated', 'knowledge', ] as $field) {
-            if ($model->{$field} === null && $attributes[$field] !== null) {
-                $updates[$field] = $attributes[$field];
+        foreach ($attributes as $field => $value) {
+            if (in_array($field, ['provider_id', 'model_key', 'source'], true)) {
+                continue;
+            }
+
+            // OpenRouter is the authoritative source for its own data.
+            if ($field === 'cost_input' || $field === 'cost_output') {
+                if ($value !== null) {
+                    $updates[$field] = $value;
+                }
+
+                continue;
+            }
+
+            if ($model->{$field} === null && $value !== null) {
+                $updates[$field] = $value;
             }
         }
 
-        // OpenRouter is the authoritative source for its own pricing.
-        foreach (['cost_input', 'cost_output'] as $field) {
-            if ($attributes[$field] !== null) {
-                $updates[$field] = $attributes[$field];
-            }
-        }
-
-        $updates['raw'] = array_merge($rawAll, $rawOr);
         $updates['updated_at'] = now();
 
         $model->fill($updates)->save();
     }
 
     /**
-     * @param  array<string, mixed>  $model
-     * @param  list<string>  $mapped
-     * @return array<string, mixed>
+     * @return list<string>
      */
-    private function stripMapped(array $model, array $mapped): array
+    private function upsertColumns(): array
     {
-        return collect($model)->except($mapped)->all();
+        return [
+            'name', 'description', 'family', 'modalities', 'type',
+            'context_window', 'limit_input', 'max_output_tokens',
+            'reasoning', 'reasoning_options', 'reasoning_default_effort',
+            'reasoning_efforts', 'reasoning_mandatory', 'reasoning_interleaved',
+            'structured_output', 'temperature', 'tool_call', 'attachment',
+            'open_weights', 'cost_input', 'cost_output', 'cost_cache_read',
+            'cost_cache_write', 'cost_input_audio', 'cost_output_audio',
+            'cost_reasoning', 'cost_context_over_200k', 'cost_tiers',
+            'experimental', 'provider_overrides', 'supported_parameters',
+            'default_parameters', 'benchmarks', 'pricing', 'canonical_slug',
+            'links', 'alias_target', 'status', 'release_date', 'last_updated',
+            'knowledge', 'source', 'updated_at',
+        ];
     }
 
     /**

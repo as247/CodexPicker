@@ -14,16 +14,14 @@ use Illuminate\Support\Carbon;
  * @property string|null $api
  * @property string|null $doc
  * @property string|null $npm
- * @property array|null $env
- * @property bool $is_active
- * @property array|null $meta
+ * @property list<string>|null $env
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
 class AiProvider extends Model
 {
     #[Fillable([
-        'slug', 'name', 'api', 'doc', 'npm', 'env', 'is_active', 'meta',
+        'slug', 'name', 'api', 'doc', 'npm', 'env',
     ])]
     protected $guarded = [];
 
@@ -31,8 +29,6 @@ class AiProvider extends Model
     {
         return [
             'env' => 'array',
-            'meta' => 'array',
-            'is_active' => 'boolean',
         ];
     }
 
