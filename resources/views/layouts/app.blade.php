@@ -21,15 +21,15 @@
 <flux:header container class="bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-700">
     <flux:sidebar.toggle class="lg:hidden" icon="bars-2" inset="left" />
 
-    <flux:brand href="#" name="CodexPicker">
+    <flux:brand :href="route('home')" name="CodexPicker">
         <x-slot name="logo" class="size-6 rounded-full bg-cyan-500 text-white text-xs font-bold">
             <flux:icon name="rocket-launch" variant="micro" />
         </x-slot>
     </flux:brand>
 
     <flux:navbar class="-mb-px max-lg:hidden">
-        <flux:navbar.item icon="home" :current="request()->routeIs('dashboard')" wire:navigate>
-            {{ __('Dashboard') }}
+        <flux:navbar.item :href="route('providers')" :current="request()->routeIs('providers')" wire:navigate>
+            {{ __('Providers') }}
         </flux:navbar.item>
     </flux:navbar>
 
