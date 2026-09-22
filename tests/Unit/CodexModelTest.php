@@ -3,7 +3,7 @@
 namespace Tests\Unit;
 
 use App\Models\AiModel;
-use App\Models\CodexModel;
+use App\Resources\CodexModel;
 use Tests\TestCase;
 
 class CodexModelTest extends TestCase

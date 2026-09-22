@@ -3,7 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\AiModel;
-use App\Models\CodexModel;
+use App\Resources\CodexModel;
 use Illuminate\Console\Command;
 
 class ExportCodexModelsCommand extends Command

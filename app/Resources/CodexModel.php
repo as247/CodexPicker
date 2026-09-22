@@ -1,7 +1,9 @@
 <?php
 
-namespace App\Models;
+namespace App\Resources;
 
+use App\Models\AiModel;
+use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Fluent;
 use JsonSerializable;
@@ -17,7 +19,7 @@ use JsonSerializable;
 /**
  * @extends Fluent<string, mixed>
  */
-class CodexModel extends Fluent implements JsonSerializable
+class CodexModel extends JsonResource
 {
     /**
      * @param  array<string, mixed>  $overrides
