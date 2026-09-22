@@ -12,14 +12,14 @@ use JsonSerializable;
  * Builds a Codex-compatible model definition from an AiModel record.
  *
  * The JSON shape mirrors resources/json/codex-template.json. Defaults are taken
- * from the bundled template so that encoding a CodexModel always yields every
+ * from the bundled template so that encoding a CodexModelResource always yields every
  * expected key, and the mapped AiModel data plus any explicit overrides are
  * applied on top of those defaults.
  */
 /**
  * @extends Fluent<string, mixed>
  */
-class CodexModel extends JsonResource
+class CodexModelResource extends JsonResource
 {
     /**
      * @param  array<string, mixed>  $overrides

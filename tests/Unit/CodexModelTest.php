@@ -3,7 +3,7 @@
 namespace Tests\Unit;
 
 use App\Models\AiModel;
-use App\Resources\CodexModel;
+use App\Resources\CodexModelResource;
 use Tests\TestCase;
 
 class CodexModelTest extends TestCase
@@ -29,7 +29,7 @@ class CodexModelTest extends TestCase
             'attachment' => false,
         ]);
 
-        $codex = new CodexModel($aiModel);
+        $codex = new CodexModelResource($aiModel);
         $encoded = json_decode(json_encode($codex), true);
 
         $this->assertSame(array_keys($templateModel), array_keys($encoded));
@@ -61,7 +61,7 @@ class CodexModelTest extends TestCase
             'reasoning_default_effort' => 'low',
         ]);
 
-        $encoded = json_decode(json_encode(new CodexModel($aiModel)), true);
+        $encoded = json_decode(json_encode(new CodexModelResource($aiModel)), true);
 
         $this->assertSame(
             ['none', 'low', 'high'],
@@ -80,7 +80,7 @@ class CodexModelTest extends TestCase
             'modalities' => ['input' => ['text'], 'output' => ['text']],
         ]);
 
-        $codex = new CodexModel($aiModel, [
+        $codex = new CodexModelResource($aiModel, [
             'display_name' => 'Custom Display Name',
             'prefer_websockets' => true,
             'truncation_policy.limit' => 50,
@@ -102,7 +102,7 @@ class CodexModelTest extends TestCase
             'reasoning' => false,
         ]);
 
-        $encoded = json_decode(json_encode(new CodexModel($aiModel)), true);
+        $encoded = json_decode(json_encode(new CodexModelResource($aiModel)), true);
 
         $this->assertSame('none', $encoded['default_reasoning_level']);
         $this->assertSame([], $encoded['supported_reasoning_levels']);

@@ -3,7 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\AiModel;
-use App\Resources\CodexModel;
+use App\Resources\CodexModelResource;
 use Illuminate\Console\Command;
 
 class ExportCodexModelsCommand extends Command
@@ -44,7 +44,7 @@ class ExportCodexModelsCommand extends Command
 
         $payload = [
             'models' => $models
-                ->map(fn (AiModel $model) => json_decode(json_encode(new CodexModel($model)), true))
+                ->map(fn (AiModel $model) => json_decode(json_encode(new CodexModelResource($model)), true))
                 ->values()
                 ->all(),
         ];
