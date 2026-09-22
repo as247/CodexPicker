@@ -15,7 +15,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $description
  * @property string|null $family
  * @property string|null $type
- * @property array{input?: list<string>, output?: list<string>}|null $modalities
+ * @property list<string>|array{input?: list<string>, output?: list<string>}|null $modalities
  * @property int|null $context_window
  * @property int|null $limit_input
  * @property int|null $max_output_tokens

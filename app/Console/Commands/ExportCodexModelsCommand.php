@@ -36,15 +36,9 @@ class ExportCodexModelsCommand extends Command
             return self::FAILURE;
         }
 
-        if ($models->isEmpty()) {
-            $this->warn('No models selected.');
-
-            return self::FAILURE;
-        }
-
         $payload = [
             'models' => $models
-                ->map(fn (AiModel $model) => json_decode(json_encode(new CodexModelResource($model)), true))
+                ->map(fn (AiModel $model) => (new CodexModelResource($model))->toArray(request()))
                 ->values()
                 ->all(),
         ];

@@ -5,66 +5,68 @@ namespace App\Resources;
 use App\Models\AiModel;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Fluent;
-use JsonSerializable;
 
 /**
- * Builds a Codex-compatible model definition from an AiModel record.
+ * Maps an AiModel record to the Codex model definition format.
  *
- * The JSON shape mirrors resources/json/codex-template.json. Defaults are taken
- * from the bundled template so that encoding a CodexModelResource always yields every
- * expected key, and the mapped AiModel data plus any explicit overrides are
- * applied on top of those defaults.
- */
-/**
- * @extends Fluent<string, mixed>
+ * resources/json/codex-template.json is the output contract: every key of the
+ * template is preserved, and fields that AiModel does not have (or that are
+ * null) fall back to the template default.
+ *
+ * @property AiModel $resource
+ *
+ * @mixin AiModel
  */
 class CodexModelResource extends JsonResource
 {
-    /**
-     * @param  array<string, mixed>  $overrides
-     */
-    public function __construct(AiModel $aiModel, array $overrides = [])
+    public function __construct(AiModel $resource)
     {
-        // Per-model overrides stored in ai_models.codex, then explicit call-site overrides win.
-        $overrides = array_merge((array) ($aiModel->codex ?? []), $overrides);
-
-        parent::__construct($this->buildAttributes($aiModel, $overrides));
-    }
-
-    public function jsonSerialize(): array
-    {
-        return $this->toArray();
+        parent::__construct($resource);
     }
 
     /**
-     * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>
      */
-    private function buildAttributes(AiModel $aiModel, array $overrides): array
+    public function toArray($request): array
     {
-        $attributes = $this->templateDefaults();
+        $defaults = $this->templateDefaults();
 
-        Arr::set($attributes, 'slug', (string) $aiModel->model_key);
-        Arr::set($attributes, 'display_name', (string) $aiModel->name);
-        Arr::set($attributes, 'description', (string) ($aiModel->description ?? $aiModel->name));
-        Arr::set($attributes, 'context_window', $aiModel->context_window);
-        Arr::set($attributes, 'max_context_window', $aiModel->context_window);
-        Arr::set($attributes, 'supports_parallel_tool_calls', (bool) $aiModel->tool_call);
-        Arr::set($attributes, 'input_modalities', $this->inputModalities($aiModel));
-        Arr::set($attributes, 'supports_image_detail_original', $this->supportsImageDetailOriginal($aiModel));
-        Arr::set($attributes, 'default_reasoning_level', $this->defaultReasoningLevel($aiModel));
-        Arr::set($attributes, 'supported_reasoning_levels', $this->supportedReasoningLevels($aiModel));
-        Arr::set($attributes, 'supports_reasoning_summary_parameter', (bool) $aiModel->reasoning);
-        Arr::set($attributes, 'supports_reasoning_summaries', (bool) $aiModel->reasoning);
-        Arr::set($attributes, 'supports_search_tool', (bool) $aiModel->attachment);
-        Arr::set($attributes, 'tool_mode', $this->toolMode($aiModel));
-        Arr::set($attributes, 'default_reasoning_summary', $this->defaultReasoningSummary($aiModel));
-        if (($attributes['truncation_policy'] ?? null) === null) {
-            Arr::set($attributes, 'truncation_policy', $this->truncationPolicy($aiModel));
-        }
+        $mapped = [
+            'slug' => $this->resource->model_key,
+            'display_name' => $this->resource->name,
+            'description' => $this->resource->description ?? $this->resource->name,
+            'context_window' => $this->resource->context_window,
+            'max_context_window' => $this->resource->context_window,
+            'supports_parallel_tool_calls' => (bool) $this->resource->tool_call,
+            'input_modalities' => $this->inputModalities(),
+            'supports_image_detail_original' => $this->supportsImageDetailOriginal(),
+            'default_reasoning_level' => $this->defaultReasoningLevel(),
+            'supported_reasoning_levels' => $this->supportedReasoningLevels(),
+            'supports_reasoning_summary_parameter' => (bool) $this->resource->reasoning,
+            'supports_reasoning_summaries' => (bool) $this->resource->reasoning,
+            'supports_search_tool' => (bool) $this->resource->attachment,
+            'tool_mode' => $this->toolMode(),
+            'default_reasoning_summary' => $this->defaultReasoningSummary(),
+            'truncation_policy' => $this->truncationPolicy(),
+        ];
 
-        foreach ($overrides as $key => $value) {
+        return $this->mergeWithDefaults($defaults, $mapped);
+    }
+
+    /**
+     * @param  array<string, mixed>  $defaults
+     * @param  array<string, mixed>  $mapped
+     * @return array<string, mixed>
+     */
+    private function mergeWithDefaults(array $defaults, array $mapped): array
+    {
+        $attributes = $defaults;
+
+        foreach ($mapped as $key => $value) {
+            if ($value === null || $value === []) {
+                continue;
+            }
+
             Arr::set($attributes, $key, $value);
         }
 
@@ -76,9 +78,7 @@ class CodexModelResource extends JsonResource
      */
     private function templateDefaults(): array
     {
-        $path = resource_path('json/codex-template.json');
-
-        $contents = file_get_contents($path);
+        $contents = file_get_contents(resource_path('json/codex-template.json'));
 
         if ($contents === false) {
             throw new \RuntimeException('Codex template not found at [resources/json/codex-template.json].');
@@ -97,47 +97,63 @@ class CodexModelResource extends JsonResource
     /**
      * @return list<string>
      */
-    private function inputModalities(AiModel $aiModel): array
+    private function inputModalities(): array
     {
-        $modalities = $aiModel->modalities ?? [];
+        $modalities = $this->resource->modalities;
+
+        if ($modalities === null || $modalities === []) {
+            return [];
+        }
 
         if (array_is_list($modalities)) {
             $inputs = array_values(array_filter($modalities, fn ($value): bool => is_string($value)));
         } else {
-            $inputs = $modalities['input'] ?? [];
+            $inputs = $modalities['input'] ?? null;
+
+            if (! is_array($inputs)) {
+                $inputs = [];
+            }
         }
 
         $inputs = array_values(array_intersect($inputs, ['text', 'image', 'audio', 'video']));
 
-        return $inputs !== [] ? $inputs : ['text'];
+        return $inputs;
     }
 
-    private function supportsImageDetailOriginal(AiModel $aiModel): bool
+    private function supportsImageDetailOriginal(): bool
     {
-        $modalities = $aiModel->modalities ?? [];
+        $modalities = $this->resource->modalities;
+
+        if ($modalities === null || $modalities === []) {
+            return false;
+        }
 
         $inputs = array_is_list($modalities)
             ? array_filter($modalities, fn ($value): bool => is_string($value))
-            : ($modalities['input'] ?? []);
+            : ($modalities['input'] ?? null);
+
+        if (! is_array($inputs)) {
+            return false;
+        }
 
         return in_array('image', $inputs, true);
     }
 
-    private function defaultReasoningLevel(AiModel $aiModel): string
+    private function defaultReasoningLevel(): ?string
     {
-        if (! $aiModel->reasoning) {
+        if (! $this->resource->reasoning) {
             return 'none';
         }
 
-        return (string) ($aiModel->reasoning_default_effort ?? 'medium');
+        return $this->resource->reasoning_default_effort;
     }
 
     /**
      * @return list<array{effort: string, description: string}>
      */
-    private function supportedReasoningLevels(AiModel $aiModel): array
+    private function supportedReasoningLevels(): array
     {
-        $efforts = (array) ($aiModel->reasoning_efforts ?? []);
+        $efforts = (array) ($this->resource->reasoning_efforts ?? []);
 
         if ($efforts === []) {
             return [];
@@ -159,16 +175,16 @@ class CodexModelResource extends JsonResource
         );
     }
 
-    private function toolMode(AiModel $aiModel): string
+    private function toolMode(): string
     {
-        return $aiModel->tool_call ? 'unified' : 'none';
+        return $this->resource->tool_call ? 'unified' : 'none';
     }
 
-    private function defaultReasoningSummary(AiModel $aiModel): string
+    private function defaultReasoningSummary(): string
     {
-        $efforts = (array) ($aiModel->reasoning_efforts ?? []);
+        $efforts = (array) ($this->resource->reasoning_efforts ?? []);
 
-        if ($efforts === [] || ! $aiModel->reasoning) {
+        if ($efforts === [] || ! $this->resource->reasoning) {
             return 'none';
         }
 
@@ -178,9 +194,9 @@ class CodexModelResource extends JsonResource
     /**
      * @return array{mode: string, limit: int}|null
      */
-    private function truncationPolicy(AiModel $aiModel): ?array
+    private function truncationPolicy(): ?array
     {
-        $context = $aiModel->context_window;
+        $context = $this->resource->context_window;
 
         if ($context === null) {
             return null;

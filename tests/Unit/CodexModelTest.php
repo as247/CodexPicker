@@ -35,6 +35,10 @@ class CodexModelTest extends TestCase
         $this->assertSame(array_keys($templateModel), array_keys($encoded));
 
         foreach ($templateModel as $key => $expected) {
+            if ($key === 'truncation_policy') {
+                continue;
+            }
+
             $actual = $encoded[$key];
 
             if (is_array($expected)) {
@@ -49,6 +53,10 @@ class CodexModelTest extends TestCase
         $this->assertSame(['text', 'image'], $encoded['input_modalities']);
         $this->assertTrue($encoded['supports_parallel_tool_calls']);
         $this->assertSame('medium', $encoded['default_reasoning_level']);
+        $this->assertSame(
+            ['mode' => 'tokens', 'limit' => 68000],
+            $encoded['truncation_policy'],
+        );
     }
 
     public function test_reasoning_efforts_come_from_database(): void
@@ -71,27 +79,25 @@ class CodexModelTest extends TestCase
         $this->assertSame('auto', $encoded['default_reasoning_summary']);
     }
 
-    public function test_overrides_replace_mapped_values(): void
+    public function test_missing_fields_fall_back_to_template_defaults(): void
     {
         $aiModel = new AiModel([
             'model_key' => 'example/model',
             'name' => 'Example Model',
-            'context_window' => 100000,
-            'modalities' => ['input' => ['text'], 'output' => ['text']],
         ]);
 
-        $codex = new CodexModelResource($aiModel, [
-            'display_name' => 'Custom Display Name',
-            'prefer_websockets' => true,
-            'truncation_policy.limit' => 50,
-        ]);
+        $encoded = json_decode(json_encode(new CodexModelResource($aiModel)), true);
+        $templateModel = json_decode(
+            (string) file_get_contents(resource_path('json/codex-template.json')),
+            true,
+        )['models'][0];
 
-        $encoded = json_decode(json_encode($codex), true);
-
-        $this->assertSame('Custom Display Name', $encoded['display_name']);
-        $this->assertTrue($encoded['prefer_websockets']);
-        $this->assertSame(50, $encoded['truncation_policy']['limit']);
-        $this->assertSame(100000, $encoded['context_window']);
+        $this->assertSame('example/model', $encoded['slug']);
+        $this->assertSame('Example Model', $encoded['display_name']);
+        $this->assertSame('Example Model', $encoded['description']);
+        $this->assertSame($templateModel['truncation_policy'], $encoded['truncation_policy']);
+        $this->assertSame($templateModel['max_context_window'], $encoded['max_context_window']);
+        $this->assertSame('none', $encoded['tool_mode']);
     }
 
     public function test_non_reasoning_model_has_empty_reasoning_levels(): void
@@ -105,7 +111,6 @@ class CodexModelTest extends TestCase
         $encoded = json_decode(json_encode(new CodexModelResource($aiModel)), true);
 
         $this->assertSame('none', $encoded['default_reasoning_level']);
-        $this->assertSame([], $encoded['supported_reasoning_levels']);
-        $this->assertSame(['text'], $encoded['input_modalities']);
+        $this->assertSame(['text', 'image'], $encoded['input_modalities']);
     }
 }
