@@ -54,7 +54,7 @@ new class extends Livewire\Component
 
     public function formatCost(string|float|null $cost): string
     {
-        if ($cost === null) {
+        if ($cost === null || $cost<0) {
             return '—';
         }
 
