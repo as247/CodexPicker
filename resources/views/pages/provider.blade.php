@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\AgentConfig;
 use App\Models\AiModel;
 use App\Models\AiProvider;
 use Illuminate\Database\Eloquent\Builder;
@@ -22,6 +23,16 @@ new class extends Livewire\Component
     public string $sortDirection = 'asc';
 
     public bool $selectAll = false;
+
+    public function createAgentConfig(): void
+    {
+        $config = AgentConfig::create([
+            'provider_name' => $this->provider->name,
+            'provider_api' => $this->provider->api,
+            'model_ids' => array_map(intval(...), $this->selected),
+        ]);
+        $this->dispatch('load-codex-config', provider: $this->provider->id, config: $config->id);
+    }
 
     /** @var list<int|string> */
     public array $selected = [];
@@ -102,13 +113,17 @@ new class extends Livewire\Component
 
         return implode(', ', $input).' -> '.implode(', ', $output);
     }
+    #[\Livewire\Attributes\Computed]
+    public function provider(){
+        return AiProvider::query()
+            ->where('slug', $this->slug)
+            ->firstOrFail();
+    }
 
     public function with(): array
     {
         return [
-            'provider' => AiProvider::query()
-                ->where('slug', $this->slug)
-                ->firstOrFail(),
+            'provider' => $this->provider,
             'models' => AiModel::query()
                 ->whereHas('provider', fn (Builder $query) => $query->where('slug', $this->slug))
                 ->when(
@@ -158,4 +173,7 @@ new class extends Livewire\Component
         :selected-models="$selectedModels"
         :count="count($selected)"
     />
+
+    <livewire:provider.build-codex-config-modal wire:key="build-codex-config-modal" />
 </div>
+

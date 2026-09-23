@@ -61,6 +61,7 @@
             @endforeach
         </ul>
 
-        <flux:button variant="primary" class="mt-2">Build Codex Config</flux:button>
+        <flux:button variant="primary" class="mt-2" wire:click="createAgentConfig">Build Codex Config</flux:button>
     @endif
 </aside>
+
