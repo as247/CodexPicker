@@ -37,17 +37,11 @@ class CodexModelResource extends JsonResource
             'description' => $this->resource->description ?? $this->resource->name,
             'context_window' => $this->resource->context_window,
             'max_context_window' => $this->resource->context_window,
-            'supports_parallel_tool_calls' => (bool) $this->resource->tool_call,
             'input_modalities' => $this->inputModalities(),
-            'supports_image_detail_original' => $this->supportsImageDetailOriginal(),
             'default_reasoning_level' => $this->defaultReasoningLevel(),
             'supported_reasoning_levels' => $this->supportedReasoningLevels(),
-            'supports_reasoning_summary_parameter' => (bool) $this->resource->reasoning,
-            'supports_reasoning_summaries' => (bool) $this->resource->reasoning,
-            'supports_search_tool' => (bool) $this->resource->attachment,
-            'tool_mode' => $this->toolMode(),
             'default_reasoning_summary' => $this->defaultReasoningSummary(),
-            'truncation_policy' => $this->truncationPolicy(),
+            'use_responses_lite' => false,
         ];
 
         return $this->mergeWithDefaults($defaults, $mapped);
@@ -120,24 +114,6 @@ class CodexModelResource extends JsonResource
         return $inputs;
     }
 
-    private function supportsImageDetailOriginal(): bool
-    {
-        $modalities = $this->resource->modalities;
-
-        if ($modalities === null || $modalities === []) {
-            return false;
-        }
-
-        $inputs = array_is_list($modalities)
-            ? array_filter($modalities, fn ($value): bool => is_string($value))
-            : ($modalities['input'] ?? null);
-
-        if (! is_array($inputs)) {
-            return false;
-        }
-
-        return in_array('image', $inputs, true);
-    }
 
     private function defaultReasoningLevel(): ?string
     {
@@ -175,11 +151,6 @@ class CodexModelResource extends JsonResource
         );
     }
 
-    private function toolMode(): string
-    {
-        return $this->resource->tool_call ? 'unified' : 'none';
-    }
-
     private function defaultReasoningSummary(): string
     {
         $efforts = (array) ($this->resource->reasoning_efforts ?? []);
@@ -191,20 +162,4 @@ class CodexModelResource extends JsonResource
         return 'auto';
     }
 
-    /**
-     * @return array{mode: string, limit: int}|null
-     */
-    private function truncationPolicy(): ?array
-    {
-        $context = $this->resource->context_window;
-
-        if ($context === null) {
-            return null;
-        }
-
-        return [
-            'mode' => 'tokens',
-            'limit' => (int) max(1_000, floor($context * 0.25)),
-        ];
-    }
 }
