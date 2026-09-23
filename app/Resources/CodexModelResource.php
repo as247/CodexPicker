@@ -109,7 +109,7 @@ class CodexModelResource extends JsonResource
             }
         }
 
-        $inputs = array_values(array_intersect($inputs, ['text', 'image', 'audio', 'video']));
+        $inputs = array_values(array_intersect($inputs, ['text', 'image', 'audio']));
 
         return $inputs;
     }
