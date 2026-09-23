@@ -4,16 +4,12 @@ use App\Models\AiModel;
 use App\Models\AiProvider;
 use Flux\Flux;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Http;
 use Livewire\Attributes\Locked;
 use Livewire\Attributes\On;
 use Livewire\Component;
-use Livewire\Features\SupportStreaming\HandlesStreaming;
 
 new class extends Component
 {
-    use HandlesStreaming;
-
     #[Locked]
     public ?int $providerId = null;
 
@@ -30,11 +26,9 @@ new class extends Component
 
     public bool $probeTest = false;
 
-    public string $apiKey = '';
-
     public bool $built = false;
 
-    /** @var list<array{model: string, status: string}> */
+    /** @var list<array{model: string, status: string, latency_ms?: int|null, error?: string|null}> */
     public array $results = [];
 
     public int $liveCount = 0;
@@ -62,112 +56,80 @@ new class extends Component
         }
     }
 
-    public function updatedProbeTest(bool $value): void
-    {
-        if (! $value) {
-            $this->reset('apiKey');
-        }
-    }
-
-    public function updatedApiKey(): void
-    {
-        $this->resetValidation('apiKey');
-    }
-
     public function build(): void
     {
         $this->validate([
-            'apiUrl' => ['required', 'string', 'url'],
+            'apiUrl' => ['required', 'string', 'url', 'regex:/^https?:\/\//i'],
         ]);
 
         $this->reset('results', 'liveCount', 'deadCount');
+        $this->built = false;
 
         if ($this->probeTest) {
-            if (trim($this->apiKey) === '') {
-                $this->addError('apiKey', 'API key is required to run the probe test.');
+            $this->dispatch(
+                'run-probe-test',
+                models: $this->selectedModelLabels()->values()->all(),
+                endpoint: $this->responsesEndpoint(),
+            );
 
-                return;
+            return;
+        }
+
+        $liveModelIds = collect($this->modelIds)
+            ->map(fn (int|string $id): int => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $this->liveCount = count($liveModelIds);
+        $this->deadCount = 0;
+
+        if ($this->config !== null) {
+            $this->config->update([
+                'live_model_ids' => $liveModelIds,
+            ]);
+        }
+
+        $this->built = true;
+    }
+
+    #[On('probe-test-results')]
+    public function applyProbeResults(array $results = []): void
+    {
+        $this->results = [];
+        $this->liveCount = 0;
+        $this->deadCount = 0;
+
+        foreach ($results as $result) {
+            $ok = ($result['ok'] ?? false) === true;
+
+            $this->results[] = [
+                'model' => (string) ($result['model'] ?? ''),
+                'status' => $ok ? 'live' : 'dead',
+                'latency_ms' => isset($result['latencyMs']) ? (int) $result['latencyMs'] : null,
+                'error' => $ok ? null : (isset($result['error']) ? (string) $result['error'] : null),
+            ];
+
+            if ($ok) {
+                $this->liveCount++;
+            } else {
+                $this->deadCount++;
             }
+        }
 
-            $models = AiModel::query()
-                ->whereIn('id', $this->modelIds)
-                ->get()
-                ->keyBy(fn (AiModel $model): int => $model->id);
+        $liveKeys = collect($this->results)
+            ->filter(fn (array $result): bool => $result['status'] === 'live')
+            ->pluck('model')
+            ->all();
 
-            $models = collect($this->modelIds)
-                ->map(fn (int|string $id): ?AiModel => $models->get((int) $id))
-                ->filter()
-                ->values();
+        $liveModelIds = AiModel::query()
+            ->whereIn('model_key', $liveKeys)
+            ->whereIn('id', $this->modelIds)
+            ->pluck('id')
+            ->all();
 
-            foreach ($models as $model) {
-                try {
-                    $response = Http::withToken($this->apiKey)
-                        ->timeout(20)
-                        ->connectTimeout(2)
-                        ->acceptJson()
-                        ->post(rtrim($this->apiUrl, '/').'/chat/completions', [
-                            'model' => $model->model_key,
-                            'messages' => [
-                                ['role' => 'user', 'content' => 'Reply with exactly: OK'],
-                            ],
-                            'max_tokens' => 10,
-                        ]);
-
-                    $ok = $response->successful();
-
-                    $this->results[] = [
-                        'model' => $model->model_key,
-                        'status' => $ok ? 'live' : 'dead',
-                    ];
-
-                    if ($ok) {
-                        $this->liveCount++;
-                    } else {
-                        $this->deadCount++;
-                    }
-
-                    $this->stream(
-                        'probe-console',
-                        view('livewire.provider.partials.probe-console-line', [
-                            'model' => $model->model_key,
-                            'status' => $ok ? 'live' : 'dead',
-                        ])->render(),
-                    );
-                } catch (\Throwable $e) {
-                    $this->results[] = [
-                        'model' => $model->model_key,
-                        'status' => 'dead',
-                    ];
-
-                    $this->deadCount++;
-
-                    $this->stream(
-                        'probe-console',
-                        view('livewire.provider.partials.probe-console-line', [
-                            'model' => $model->model_key,
-                            'status' => 'dead',
-                        ])->render(),
-                    );
-                }
-            }
-
-            $liveIds = collect($this->results)
-                ->filter(fn (array $result): bool => $result['status'] === 'live')
-                ->pluck('model')
-                ->all();
-
-            $liveModelIds = AiModel::query()
-                ->whereIn('model_key', $liveIds)
-                ->whereIn('id', $this->modelIds)
-                ->pluck('id')
-                ->all();
-
-            if ($this->config !== null) {
-                $this->config->update(['live_model_ids' => $liveModelIds]);
-            }
-        } else {
-            $this->liveCount = count($this->modelIds);
-            $this->deadCount = 0;
+        if ($this->config !== null) {
+            $this->config->update(['live_model_ids' => $liveModelIds]);
         }
 
         $this->built = true;
@@ -203,6 +165,14 @@ new class extends Component
             ->map(fn (int|string $id): ?string => $models->get((int) $id)?->model_key)
             ->filter()
             ->values();
+    }
+    protected function responsesEndpoint(): string
+    {
+        $base = rtrim($this->apiUrl, '/');
+
+        return preg_match('#/responses$#i', $base)
+            ? $base
+            : $base . '/responses';
     }
 }
 ?>
@@ -258,8 +228,13 @@ new class extends Component
             @if ($probeTest)
                 <flux:field>
                     <flux:label>API key</flux:label>
-                    <flux:input type="password" wire:model="apiKey" placeholder="sk-..." />
-                    <flux:error name="apiKey" />
+                    {{-- Kept out of Livewire state so the key stays in the browser. --}}
+                    <input
+                        id="probe-api-key"
+                        type="password"
+                        placeholder="sk-..."
+                        class="block w-full rounded-md bg-white px-3 py-2 text-sm shadow-sm outline-none ring-1 ring-zinc-950/10 dark:bg-zinc-700/50 dark:ring-white/10 dark:text-white"
+                    />
                 </flux:field>
             @endif
 
@@ -278,9 +253,9 @@ new class extends Component
                             <span class="text-red-500">{{ $deadCount }} dead</span>
                         </span>
                     </div>
-                    <div wire:stream="probe-console" class="max-h-40 overflow-y-auto space-y-0.5">
+                    <div class="max-h-40 overflow-y-auto space-y-0.5">
                         @foreach ($results as $result)
-                            @include('livewire.provider.partials.probe-console-line', ['model' => $result['model'], 'status' => $result['status']])
+                            @include('livewire.provider.partials.probe-console-line', ['model' => $result['model'], 'status' => $result['status'], 'latencyMs' => $result['latency_ms'] ?? null, 'error' => $result['error'] ?? null])
                         @endforeach
                     </div>
                 </div>
@@ -310,6 +285,7 @@ new class extends Component
                     wire:click="build"
                     wire:loading.attr="disabled"
                     wire:target="build"
+                    data-probe-button
                 >
                     <span wire:loading.remove wire:target="build">Build</span>
                     <span wire:loading wire:target="build" class="text-xs opacity-70">Probing models...</span>
@@ -318,3 +294,169 @@ new class extends Component
         </div>
     </flux:modal>
 </div>
+
+@script
+<script>
+    $wire.$on('run-probe-test', async (event) => {
+        const apiKeyInput = $wire.$el.querySelector('#probe-api-key');
+        const apiKey = (apiKeyInput?.value ?? '').trim();
+
+        if (!apiKey) {
+            apiKeyInput?.focus();
+            alert('API key is required to run the probe test.');
+            return;
+        }
+
+        const {
+            models = [],
+            endpoint = '',
+        } = event.detail ?? {};
+
+        if (!Array.isArray(models) || models.length === 0) {
+            alert('No models available for probing.');
+            return;
+        }
+
+        if (!endpoint) {
+            alert('API endpoint is missing.');
+            return;
+        }
+
+        const button = $wire.$el.querySelector('[data-probe-button]');
+        const originalHtml = button?.innerHTML ?? null;
+
+        const TIMEOUT_MS = 10_000;
+        const CONCURRENCY = 4;
+
+        if (button) {
+            button.disabled = true;
+            button.textContent = `Probing 0/${models.length}...`;
+        }
+
+        const results = new Array(models.length);
+        let completed = 0;
+        let nextIndex = 0;
+
+        const probeModel = async (model) => {
+            const startedAt = performance.now();
+            const controller = new AbortController();
+
+            const timeout = setTimeout(() => {
+                controller.abort();
+            }, TIMEOUT_MS);
+
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        Authorization: `Bearer ${apiKey}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        model,
+                        input: 'Reply only: OK',
+                        max_output_tokens: 2,
+                        store: false,
+                    }),
+                    signal: controller.signal,
+                });
+
+                const data = await response.json().catch(() => null);
+
+                const latencyMs = Math.round(
+                    performance.now() - startedAt
+                );
+
+                if (response.ok) {
+                    const incompleteReason =
+                        data?.incomplete_details?.reason ?? null;
+
+                    return {
+                        model,
+                        ok: true,
+                        latencyMs,
+                        error: incompleteReason
+                            ? `HTTP ${response.status}; incomplete: ${incompleteReason}`
+                            : null,
+                    };
+                }
+
+                const message =
+                    data?.error?.message ??
+                    data?.error?.code ??
+                    data?.message ??
+                    response.statusText ??
+                    `HTTP ${response.status}`;
+
+                return {
+                    model,
+                    ok: false,
+                    latencyMs,
+                    error: `HTTP ${response.status}: ${String(message).slice(0, 200)}`,
+                };
+            } catch (error) {
+                const latencyMs = Math.round(
+                    performance.now() - startedAt
+                );
+
+                const message =
+                    error?.name === 'AbortError'
+                        ? `Timeout after ${TIMEOUT_MS / 1000}s`
+                        : String(error?.message ?? error);
+
+                return {
+                    model,
+                    ok: false,
+                    latencyMs,
+                    error: message.slice(0, 200),
+                };
+            } finally {
+                clearTimeout(timeout);
+            }
+        };
+
+        const worker = async () => {
+            while (true) {
+                const index = nextIndex++;
+
+                if (index >= models.length) {
+                    return;
+                }
+
+                results[index] = await probeModel(models[index]);
+
+                completed++;
+
+                if (button) {
+                    button.textContent =
+                        `Probing ${completed}/${models.length}...`;
+                }
+            }
+        };
+
+        try {
+            const workerCount = Math.min(CONCURRENCY, models.length);
+
+            await Promise.all(
+                Array.from(
+                    { length: workerCount },
+                    () => worker()
+                )
+            );
+
+            await $wire.$call(
+                'applyProbeResults',
+                results.filter(Boolean)
+            );
+        } finally {
+            if (button) {
+                button.disabled = false;
+
+                if (originalHtml !== null) {
+                    button.innerHTML = originalHtml;
+                }
+            }
+        }
+    });
+</script>
+@endscript
