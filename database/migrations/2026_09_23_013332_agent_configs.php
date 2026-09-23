@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('agent_configs', function (Blueprint $table): void {
             $table->uuid('id')->primary();
             $table->string('agent')->default('codex');
-            $table->json('models')->nullable();
+            $table->json('model_ids')->nullable();
             $table->text('api_url')->nullable();
             $table->boolean('probe_models')->default(false);
             $table->timestamps();
