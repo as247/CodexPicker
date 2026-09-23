@@ -15,6 +15,7 @@ return new class extends Migration
             $table->uuid('id')->primary();
             $table->string('agent')->default('codex');
             $table->json('model_ids')->nullable();
+            $table->json('live_model_ids')->nullable();
             $table->string('provider_name')->nullable();
             $table->text('provider_api')->nullable();
             $table->boolean('probe_models')->default(false);

@@ -14,6 +14,7 @@ use Illuminate\Support\Str;
  * @property string|null $id
  * @property string $agent
  * @property list<int>|null $model_ids
+ * @property list<int>|null $live_model_ids
  * @property string|null $provider_name
  * @property string|null $provider_api
  * @property bool $probe_models
@@ -26,7 +27,7 @@ class AgentConfig extends Model
     use HasFactory;
 
     #[Fillable([
-        'agent', 'model_ids', 'provider_name', 'provider_api', 'probe_models',
+        'agent', 'model_ids','live_model_ids', 'provider_name', 'provider_api', 'probe_models',
     ])]
     protected $guarded = [];
 
@@ -43,6 +44,7 @@ class AgentConfig extends Model
     {
         return [
             'model_ids' => 'array',
+            'live_model_ids' => 'array',
             'probe_models' => 'boolean',
         ];
     }
