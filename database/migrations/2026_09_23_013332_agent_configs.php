@@ -15,6 +15,7 @@ return new class extends Migration
             $table->uuid('id')->primary();
             $table->string('agent')->default('codex');
             $table->json('models')->nullable();
+            $table->text('api_url')->nullable();
             $table->boolean('probe_models')->default(false);
             $table->timestamps();
         });
