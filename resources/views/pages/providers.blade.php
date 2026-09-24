@@ -74,14 +74,7 @@ new class extends Livewire\Component
                         <flux:table.cell>
                             @if ($provider->api)
                                 <div class="flex items-center">
-                                    <span>{{$provider->api}}</span>
-
-                                    <flux:button
-                                        icon="document-duplicate"
-                                        variant="ghost"
-                                        size="sm"
-                                        x-on:click="navigator.clipboard.writeText('{{$provider->api}}')"
-                                    />
+                                    <flux:input variant="filled" size="sm" value="{{$provider->api}}" readonly copyable />
                                 </div>
                             @endif
                         </flux:table.cell>

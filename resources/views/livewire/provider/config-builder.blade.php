@@ -193,7 +193,7 @@ new class extends Component
 
                 <flux:field>
                     <flux:label>API URL</flux:label>
-                    <flux:input wire:model.live.debounce.300ms="apiUrl" placeholder="https://api.example.com/v1" />
+                    <flux:input wire:model.live.debounce.500ms="apiUrl" placeholder="https://api.example.com/v1" />
                     <flux:error name="apiUrl" />
                 </flux:field>
             </div>

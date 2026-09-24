@@ -161,32 +161,23 @@ class ImportAiCatalogCommand extends Command
 
         $provider = $this->openrouterProvider();
 
-        $existing = AiModel::query()
-            ->where('provider_id', $provider->id)
-            ->pluck('id', 'model_id');
-
         $created = 0;
         $merged = 0;
 
-        DB::transaction(function () use ($models, $provider, $existing, &$created, &$merged): void {
+        DB::transaction(function () use ($models, $provider, &$created, &$merged): void {
             foreach ($models as $model) {
                 $attributes = $this->mapOpenrouterModel($model, $provider->id);
-                $modelKey = $attributes['model_id'];
+                $existingModel = AiModel::query()
+                    ->where('provider_id', $provider->id)
+                    ->where('model_id', $attributes['model_id'])->first();
 
-                if (($id = $existing->get($modelKey)) !== null) {
-                    $model = AiModel::query()->where('id', $id)->first();
-
-                    if ($model !== null) {
-                        $this->mergeIntoExisting($model, $attributes);
-                    }
-
+                if ($model !== null) {
+                    $this->mergeIntoExisting($existingModel, $attributes);
                     $merged++;
-
-                    continue;
+                }else{
+                    AiModel::query()->create($attributes);
+                    $created++;
                 }
-
-                AiModel::query()->create($attributes);
-                $created++;
             }
         });
 
@@ -274,11 +265,6 @@ class ImportAiCatalogCommand extends Command
         return $write !== null ? (string) ((float) $write * 1_000_000) : null;
     }
 
-    private function scaledPrice(mixed $price): ?string
-    {
-        return $price !== null ? (string) ((float) $price * 1_000_000) : null;
-    }
-
     /**
      * Fill only null fields from the all.json row; OpenRouter stays the
      * authoritative source for its own pricing and capabilities.
@@ -328,17 +314,4 @@ class ImportAiCatalogCommand extends Command
         ];
     }
 
-    /**
-     * @param  array<string, mixed>  $model
-     */
-    private function openrouterStatus(array $model): ?string
-    {
-        $expiration = $model['expiration_date'] ?? null;
-
-        if ($expiration !== null && Carbon::parse($expiration)->isPast()) {
-            return 'deprecated';
-        }
-
-        return null;
-    }
 }

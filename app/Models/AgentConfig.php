@@ -58,9 +58,4 @@ class AgentConfig extends Model
         });
     }
 
-    /** @return BelongsToMany<AiModel, $this> */
-    public function models(): BelongsToMany
-    {
-        return $this->belongsToMany(AiModel::class, null, null, null, null, null, 'model_ids');
-    }
 }
