@@ -77,7 +77,7 @@ class ImportAiCatalogCommand extends Command
                 foreach (array_chunk($rows, 500) as $chunk) {
                     AiModel::upsert(
                         $chunk,
-                        ['provider_id', 'model_key'],
+                        ['provider_id', 'model_id'],
                         $this->upsertColumns(),
                     );
                 }
@@ -111,7 +111,7 @@ class ImportAiCatalogCommand extends Command
 
         return [
             'provider_id' => $providerId,
-            'model_key' => $modelKey,
+            'model_id' => $modelKey,
             'name' => $model['name'] ?? $model['id'],
             'description' => $model['description'] ?? null,
             'family' => $model['family'] ?? null,
@@ -176,7 +176,7 @@ class ImportAiCatalogCommand extends Command
 
         $existing = AiModel::query()
             ->where('provider_id', $provider->id)
-            ->pluck('id', 'model_key');
+            ->pluck('id', 'model_id');
 
         $created = 0;
         $merged = 0;
@@ -184,7 +184,7 @@ class ImportAiCatalogCommand extends Command
         DB::transaction(function () use ($models, $provider, $existing, &$created, &$merged): void {
             foreach ($models as $model) {
                 $attributes = $this->mapOpenrouterModel($model, $provider->id);
-                $modelKey = $attributes['model_key'];
+                $modelKey = $attributes['model_id'];
 
                 if (($id = $existing->get($modelKey)) !== null) {
                     $model = AiModel::query()->where('id', $id)->first();
@@ -241,7 +241,7 @@ class ImportAiCatalogCommand extends Command
 
         return [
             'provider_id' => $providerId,
-            'model_key' => $model['id'],
+            'model_id' => $model['id'],
             'name' => $model['name'] ?? $model['id'],
             'description' => $model['description'] ?? null,
             'family' => null,
@@ -323,7 +323,7 @@ class ImportAiCatalogCommand extends Command
         $updates = [];
 
         foreach ($attributes as $field => $value) {
-            if (in_array($field, ['provider_id', 'model_key', 'source'], true)) {
+            if (in_array($field, ['provider_id', 'model_id', 'source'], true)) {
                 continue;
             }
 

@@ -32,7 +32,7 @@ class CodexModelResource extends JsonResource
         $defaults = $this->templateDefaults();
 
         $mapped = [
-            'slug' => $this->resource->model_key,
+            'slug' => $this->resource->model_id,
             'display_name' => $this->resource->name,
             'description' => $this->resource->description ?? $this->resource->name,
             'context_window' => $this->resource->context_window,
@@ -42,6 +42,7 @@ class CodexModelResource extends JsonResource
             'supported_reasoning_levels' => $this->supportedReasoningLevels(),
             'default_reasoning_summary' => $this->defaultReasoningSummary(),
             'use_responses_lite' => false,
+            'tool_call'=>null,
         ];
 
         return $this->mergeWithDefaults($defaults, $mapped);
@@ -57,10 +58,6 @@ class CodexModelResource extends JsonResource
         $attributes = $defaults;
 
         foreach ($mapped as $key => $value) {
-            if ($value === null || $value === []) {
-                continue;
-            }
-
             Arr::set($attributes, $key, $value);
         }
 

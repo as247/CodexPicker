@@ -14,7 +14,6 @@ class AgentConfigController extends Controller
     public function show(AgentConfig $config): JsonResponse
     {
         $models = $this->resolveModels($config);
-
         $reasoningEfforts = $models
             ->flatMap(fn (AiModel $model): array => (array) ($model->reasoning_efforts ?? []))
             ->filter(fn (string $effort): bool => $effort !== '')

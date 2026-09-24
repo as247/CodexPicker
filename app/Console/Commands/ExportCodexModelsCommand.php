@@ -21,14 +21,14 @@ class ExportCodexModelsCommand extends Command
 
         if ($filter = (string) $this->option('filter')) {
             $keys = array_map('trim', explode(',', $filter));
-            $query->whereIn('model_key', $keys);
+            $query->whereIn('model_id', $keys);
         }
 
         if (! $this->option('all')) {
             $query->whereNotNull('codex');
         }
 
-        $models = $query->orderBy('model_key')->get();
+        $models = $query->orderBy('model_id')->get();
 
         if ($models->isEmpty()) {
             $this->warn('No models matched. Nothing exported.');

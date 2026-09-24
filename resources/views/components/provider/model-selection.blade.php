@@ -46,7 +46,7 @@
 
                     <span class="min-w-0 flex-1">
         <span class="block truncate font-medium">{{ $model->name }}</span>
-        <span class="block truncate text-xs text-zinc-500 dark:text-zinc-400">{{ $model->model_key }}</span>
+        <span class="block truncate text-xs text-zinc-500 dark:text-zinc-400">{{ $model->model_id }}</span>
     </span>
 
                     <button

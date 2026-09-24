@@ -27,7 +27,7 @@
 
                 <flux:table.cell>
                     <div class="font-medium">{{ $model->name }}</div>
-                    <div class="text-xs text-zinc-500 dark:text-zinc-400">{{ $model->model_key }}</div>
+                    <div class="text-xs text-zinc-500 dark:text-zinc-400">{{ $model->model_id }}</div>
                 </flux:table.cell>
 
                 <flux:table.cell class="tabular-nums">{{ $formatCost($model->cost_input) }}</flux:table.cell>

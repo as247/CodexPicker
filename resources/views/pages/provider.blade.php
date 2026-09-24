@@ -131,7 +131,7 @@ new class extends Livewire\Component
                     fn (Builder $query) => $query->where(function (Builder $query) {
                         $query
                             ->where('name', 'like', '%'.$this->search.'%')
-                            ->orWhere('model_key', 'like', '%'.$this->search.'%');
+                            ->orWhere('model_id', 'like', '%'.$this->search.'%');
                     }),
                 )
                 ->orderBy($this->sortField, $this->sortDirection)

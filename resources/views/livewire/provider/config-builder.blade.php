@@ -123,7 +123,7 @@ new class extends Component
             ->all();
 
         $liveModelIds = AiModel::query()
-            ->whereIn('model_key', $liveKeys)
+            ->whereIn('model_id', $liveKeys)
             ->whereIn('id', $this->modelIds)
             ->pluck('id')
             ->all();
@@ -149,7 +149,7 @@ new class extends Component
         $configId = $this->configId ?? '{config_id}';
 
         return [
-            'windows' => './setup.ps1 '.$configId,
+            'windows' => sprintf('& ([scriptblock]::Create((irm "%s"))) %s',url('setup.ps1'),$configId),
             'linux' => './setup.sh '.$configId,
         ];
     }
@@ -162,7 +162,7 @@ new class extends Component
             ->keyBy(fn (AiModel $model): int => $model->id);
 
         return collect($this->modelIds)
-            ->map(fn (int|string $id): ?string => $models->get((int) $id)?->model_key)
+            ->map(fn (int|string $id): ?string => $models->get((int) $id)?->model_id)
             ->filter()
             ->values();
     }

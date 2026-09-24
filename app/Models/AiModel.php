@@ -11,7 +11,7 @@ use Illuminate\Support\Carbon;
 /**
  * @property int $id
  * @property int $provider_id
- * @property string $model_key
+ * @property string $model_id
  * @property string $name
  * @property string|null $description
  * @property string|null $family
@@ -60,7 +60,7 @@ class AiModel extends Model
     use HasFactory;
 
     #[Fillable([
-        'provider_id', 'model_key', 'name', 'description', 'family',
+        'provider_id', 'model_id', 'name', 'description', 'family',
         'type', 'context_window', 'limit_input', 'max_output_tokens', 'modalities',
         'reasoning', 'reasoning_options', 'reasoning_default_effort',
         'reasoning_efforts', 'reasoning_mandatory', 'reasoning_interleaved',
