@@ -174,6 +174,6 @@ new class extends Livewire\Component
         :count="count($selected)"
     />
 
-    <livewire:provider.build-codex-config-modal wire:key="build-codex-config-modal" />
+    <livewire:provider.config-builder wire:key="config-builder" />
 </div>
 

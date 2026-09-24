@@ -262,10 +262,10 @@ new class extends Component
             @endif
 
             @if ($built)
-                <div>
+                <div x-data="{ tab: 'windows' }">
                     <flux:heading size="sm">Setup command</flux:heading>
 
-                    <div class="mt-2 flex gap-1 rounded-lg bg-zinc-100 p-1 dark:bg-zinc-800" x-data="{ tab: 'windows' }">
+                    <div class="mt-2 flex gap-1 rounded-lg bg-zinc-100 p-1 dark:bg-zinc-800" >
                         <button type="button" x-on:click="tab = 'windows'" :class="tab === 'windows' ? 'bg-white shadow dark:bg-zinc-700' : 'hover:bg-zinc-200 dark:hover:bg-zinc-700'" class="flex-1 rounded-md px-3 py-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">Windows</button>
                         <button type="button" x-on:click="tab = 'linux'" :class="tab === 'linux' ? 'bg-white shadow dark:bg-zinc-700' : 'hover:bg-zinc-200 dark:hover:bg-zinc-700'" class="flex-1 rounded-md px-3 py-1.5 text-sm font-medium text-zinc-700 dark:text-zinc-300">Linux</button>
                     </div>
@@ -310,7 +310,7 @@ new class extends Component
         const {
             models = [],
             endpoint = '',
-        } = event.detail ?? {};
+        } = event;
 
         if (!Array.isArray(models) || models.length === 0) {
             alert('No models available for probing.');
