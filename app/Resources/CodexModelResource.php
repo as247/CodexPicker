@@ -42,7 +42,7 @@ class CodexModelResource extends JsonResource
             'supported_reasoning_levels' => $this->supportedReasoningLevels(),
             'default_reasoning_summary' => $this->defaultReasoningSummary(),
             'use_responses_lite' => false,
-            'tool_call'=>null,
+            'tool_call' => $this->resource->supports_tools,
         ];
 
         return $this->mergeWithDefaults($defaults, $mapped);
@@ -90,22 +90,7 @@ class CodexModelResource extends JsonResource
      */
     private function inputModalities(): array
     {
-        $modalities = $this->resource->modalities;
-
-        if ($modalities === null || $modalities === []) {
-            return [];
-        }
-
-        if (array_is_list($modalities)) {
-            $inputs = array_values(array_filter($modalities, fn ($value): bool => is_string($value)));
-        } else {
-            $inputs = $modalities['input'] ?? null;
-
-            if (! is_array($inputs)) {
-                $inputs = [];
-            }
-        }
-
+        $inputs = (array) ($this->resource->input_modalities ?? []);
         $inputs = array_values(array_intersect($inputs, ['text', 'image', 'audio']));
 
         return $inputs;
@@ -114,11 +99,11 @@ class CodexModelResource extends JsonResource
 
     private function defaultReasoningLevel(): ?string
     {
-        if (! $this->resource->reasoning) {
+        if (! $this->resource->supports_reasoning) {
             return 'none';
         }
 
-        return $this->resource->reasoning_default_effort;
+        return $this->reasoningConfig()['default_effort'] ?? null;
     }
 
     /**
@@ -126,7 +111,7 @@ class CodexModelResource extends JsonResource
      */
     private function supportedReasoningLevels(): array
     {
-        $efforts = (array) ($this->resource->reasoning_efforts ?? []);
+        $efforts = (array) ($this->reasoningConfig()['supported_efforts'] ?? []);
 
         if ($efforts === []) {
             return [];
@@ -150,13 +135,19 @@ class CodexModelResource extends JsonResource
 
     private function defaultReasoningSummary(): string
     {
-        $efforts = (array) ($this->resource->reasoning_efforts ?? []);
+        $efforts = (array) ($this->reasoningConfig()['supported_efforts'] ?? []);
 
-        if ($efforts === [] || ! $this->resource->reasoning) {
+        if ($efforts === [] || ! $this->resource->supports_reasoning) {
             return 'none';
         }
 
         return 'auto';
+    }
+
+    /** @return array<string, mixed> */
+    private function reasoningConfig(): array
+    {
+        return is_array($this->resource->reasoning_config) ? $this->resource->reasoning_config : [];
     }
 
 }

@@ -63,7 +63,7 @@ new class extends Livewire\Component
 
     public function sortBy(string $field): void
     {
-        if (! in_array($field, ['name', 'cost_input', 'cost_output', 'context_window'])) {
+        if (! in_array($field, ['name', 'input_price', 'output_price', 'context_window'])) {
             return;
         }
 
@@ -98,18 +98,14 @@ new class extends Livewire\Component
         return '$'.($formatted === '' || $formatted === '-0' ? '0' : $formatted);
     }
 
-    public function formatModalities(mixed $modalities): string
+    public function formatModalities(mixed $input, mixed $output): string
     {
-        if (! is_array($modalities)) {
+        if (! is_array($input) && ! is_array($output)) {
             return '—';
         }
 
-        $input = array_key_exists('input', $modalities) && is_array($modalities['input'])
-            ? $modalities['input']
-            : $modalities;
-        $output = array_key_exists('output', $modalities) && is_array($modalities['output'])
-            ? $modalities['output']
-            : [];
+        $input = is_array($input) ? $input : [];
+        $output = is_array($output) ? $output : [];
 
         return implode(', ', $input).' -> '.implode(', ', $output);
     }
@@ -176,4 +172,3 @@ new class extends Livewire\Component
 
     <livewire:provider.config-builder wire:key="config-builder" />
 </div>
-

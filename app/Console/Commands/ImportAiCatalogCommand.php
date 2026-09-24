@@ -99,7 +99,7 @@ class ImportAiCatalogCommand extends Command
     {
         $limit = (array) ($model['limit'] ?? []);
         $cost = (array) ($model['cost'] ?? []);
-        $reasoningOptions = $model['reasoning_options'] ?? null;
+        $reasoningOptions = $model['reasoning_options'] ?? [];
         $efforts = collect((array) $reasoningOptions)
             ->filter(fn (array $option): bool => ($option['type'] ?? null) === 'effort')
             ->flatMap(fn (array $option): array => $option['values'] ?? [])
@@ -115,44 +115,31 @@ class ImportAiCatalogCommand extends Command
             'name' => $model['name'] ?? $model['id'],
             'description' => $model['description'] ?? null,
             'family' => $model['family'] ?? null,
-            'modalities' => isset($model['modalities']) ? json_encode($model['modalities']) : null,
-            'type' => $model['type'] ?? null,
+            'input_modalities' => isset($model['modalities']['input']) ? json_encode($model['modalities']['input']) : null,
+            'output_modalities' => isset($model['modalities']['output']) ? json_encode($model['modalities']['output']) : null,
             'context_window' => $limit['context'] ?? null,
-            'limit_input' => $limit['input'] ?? null,
             'max_output_tokens' => $limit['output'] ?? null,
-            'reasoning' => (bool) ($model['reasoning'] ?? false),
-            'reasoning_options' => $reasoningOptions !== null ? json_encode($reasoningOptions) : null,
-            'reasoning_default_effort' => $defaultEffort,
-            'reasoning_efforts' => $efforts !== [] ? json_encode($efforts) : null,
-            'reasoning_mandatory' => false,
-            'reasoning_interleaved' => isset($model['interleaved']) ? json_encode($model['interleaved']) : null,
-            'structured_output' => (bool) ($model['structured_output'] ?? false),
-            'temperature' => (bool) ($model['temperature'] ?? false),
-            'tool_call' => (bool) ($model['tool_call'] ?? false),
-            'attachment' => (bool) ($model['attachment'] ?? false),
+            'supports_reasoning' => (bool) ($model['reasoning'] ?? false),
+            'supports_tools' => (bool) ($model['tool_call'] ?? false),
+            'supports_structured_output' => (bool) ($model['structured_output'] ?? false),
+            'supports_temperature' => (bool) ($model['temperature'] ?? false),
             'open_weights' => (bool) ($model['open_weights'] ?? false),
-            'cost_input' => $cost['input'] ?? null,
-            'cost_output' => $cost['output'] ?? null,
-            'cost_cache_read' => $cost['cache_read'] ?? null,
-            'cost_cache_write' => isset($cost['cache_write']) && is_scalar($cost['cache_write']) ? $cost['cache_write'] : null,
-            'cost_input_audio' => $cost['input_audio'] ?? null,
-            'cost_output_audio' => $cost['output_audio'] ?? null,
-            'cost_reasoning' => $cost['reasoning'] ?? null,
-            'cost_context_over_200k' => isset($cost['context_over_200k']) ? json_encode($cost['context_over_200k']) : null,
-            'cost_tiers' => isset($cost['tiers']) ? json_encode($cost['tiers']) : null,
-            'experimental' => isset($model['experimental']) ? json_encode($model['experimental']) : null,
-            'provider_overrides' => isset($model['provider']) ? json_encode($model['provider']) : null,
+            'input_price' => $cost['input'] ?? null,
+            'output_price' => $cost['output'] ?? null,
+            'cache_read_price' => $cost['cache_read'] ?? null,
+            'cache_write_price' => isset($cost['cache_write']) && is_scalar($cost['cache_write']) ? $cost['cache_write'] : null,
+            'reasoning_config' => json_encode([
+                'options' => $reasoningOptions,
+                'default_effort' => $defaultEffort,
+                'supported_efforts' => $efforts,
+            ]),
             'supported_parameters' => null,
-            'default_parameters' => null,
-            'benchmarks' => null,
-            'pricing' => null,
-            'canonical_slug' => null,
-            'links' => null,
-            'alias_target' => null,
-            'status' => $model['status'] ?? null,
+            'pricing_rules' => isset($cost['tiers']) || isset($cost['context_over_200k']) ? json_encode([
+                'tiers' => $cost['tiers'] ?? null,
+                'context_over_200k' => $cost['context_over_200k'] ?? null,
+            ]) : null,
             'release_date' => $model['release_date'] ?? null,
             'last_updated' => $model['last_updated'] ?? null,
-            'knowledge' => isset($model['knowledge']) ? (string) $model['knowledge'] : null,
             'source' => 'all',
             'created_at' => $now,
             'updated_at' => $now,
@@ -245,54 +232,34 @@ class ImportAiCatalogCommand extends Command
             'name' => $model['name'] ?? $model['id'],
             'description' => $model['description'] ?? null,
             'family' => null,
-            'modalities' => [
-                'input' => $inputModalities,
-                'output' => $architecture['output_modalities'] ?? ['text'],
-            ],
-            'type' => null,
+            'input_modalities' => $inputModalities,
+            'output_modalities' => $architecture['output_modalities'] ?? ['text'],
             'context_window' => $model['context_length'] ?? $topProvider['context_length'] ?? null,
-            'limit_input' => null,
             'max_output_tokens' => $topProvider['max_completion_tokens'] ?? null,
             // OpenRouter signals reasoning via mandatory reasoning or supported parameters.
-            'reasoning' => (bool) ($reasoning['mandatory'] ?? false)
+            'supports_reasoning' => (bool) ($reasoning['mandatory'] ?? false)
                 || in_array('reasoning', $parameters, true)
                 || in_array('include_reasoning', $parameters, true),
-            'reasoning_options' => null,
-            'reasoning_default_effort' => $defaultEffort,
-            'reasoning_efforts' => $efforts !== [] ? $efforts : null,
-            'reasoning_mandatory' => (bool) ($reasoning['mandatory'] ?? false),
-            'reasoning_interleaved' => null,
-            'structured_output' => in_array('structured_outputs', $parameters, true),
-            'temperature' => in_array('temperature', $parameters, true),
-            'tool_call' => in_array('tools', $parameters, true),
-            'attachment' => count(array_intersect($inputModalities, ['image', 'file', 'audio', 'video'])) > 0,
+            'supports_structured_output' => in_array('structured_outputs', $parameters, true),
+            'supports_temperature' => in_array('temperature', $parameters, true),
+            'supports_tools' => in_array('tools', $parameters, true),
             // Models published on Hugging Face are treated as open weights.
             'open_weights' => ($model['hugging_face_id'] ?? null) !== null,
             // OpenRouter pricing is per token; columns store per million tokens like all.json.
-            'cost_input' => isset($pricing['prompt']) ? (string) ((float) $pricing['prompt'] * 1_000_000) : null,
-            'cost_output' => isset($pricing['completion']) ? (string) ((float) $pricing['completion'] * 1_000_000) : null,
-            'cost_cache_read' => isset($pricing['input_cache_read']) ? (string) ((float) $pricing['input_cache_read'] * 1_000_000) : null,
-            'cost_cache_write' => $this->cacheWriteCost($pricing),
-            'cost_input_audio' => $this->scaledPrice($pricing['audio'] ?? null),
-            'cost_output_audio' => $this->scaledPrice($pricing['audio_output'] ?? null),
-            'cost_reasoning' => $this->scaledPrice($pricing['internal_reasoning'] ?? null),
-            'cost_context_over_200k' => null,
-            'cost_tiers' => null,
-            'experimental' => null,
-            'provider_overrides' => null,
+            'input_price' => isset($pricing['prompt']) ? (string) ((float) $pricing['prompt'] * 1_000_000) : null,
+            'output_price' => isset($pricing['completion']) ? (string) ((float) $pricing['completion'] * 1_000_000) : null,
+            'cache_read_price' => isset($pricing['input_cache_read']) ? (string) ((float) $pricing['input_cache_read'] * 1_000_000) : null,
+            'cache_write_price' => $this->cacheWriteCost($pricing),
+            'reasoning_config' => $reasoning !== [] || $efforts !== [] || $defaultEffort !== null ? array_merge($reasoning, [
+                'supported_efforts' => $efforts,
+                'default_effort' => $defaultEffort,
+            ]) : null,
             'supported_parameters' => $parameters,
-            'default_parameters' => $model['default_parameters'] ?? null,
-            'benchmarks' => $model['benchmarks'] ?? null,
-            'pricing' => $pricing,
-            'canonical_slug' => $model['canonical_slug'] ?? null,
-            'links' => $model['links'] ?? null,
-            'alias_target' => $model['alias_target'] ?? null,
-            'status' => $this->openrouterStatus($model),
+            'pricing_rules' => $pricing,
             'release_date' => isset($model['created'])
                 ? Carbon::createFromTimestamp((int) $model['created'])->toDateString()
                 : null,
             'last_updated' => null,
-            'knowledge' => isset($model['knowledge_cutoff']) ? (string) $model['knowledge_cutoff'] : null,
             'source' => 'openrouter',
         ];
     }
@@ -328,7 +295,7 @@ class ImportAiCatalogCommand extends Command
             }
 
             // OpenRouter is the authoritative source for its own data.
-            if ($field === 'cost_input' || $field === 'cost_output') {
+            if ($field === 'input_price' || $field === 'output_price') {
                 if ($value !== null) {
                     $updates[$field] = $value;
                 }
@@ -352,18 +319,12 @@ class ImportAiCatalogCommand extends Command
     private function upsertColumns(): array
     {
         return [
-            'name', 'description', 'family', 'modalities', 'type',
-            'context_window', 'limit_input', 'max_output_tokens',
-            'reasoning', 'reasoning_options', 'reasoning_default_effort',
-            'reasoning_efforts', 'reasoning_mandatory', 'reasoning_interleaved',
-            'structured_output', 'temperature', 'tool_call', 'attachment',
-            'open_weights', 'cost_input', 'cost_output', 'cost_cache_read',
-            'cost_cache_write', 'cost_input_audio', 'cost_output_audio',
-            'cost_reasoning', 'cost_context_over_200k', 'cost_tiers',
-            'experimental', 'provider_overrides', 'supported_parameters',
-            'default_parameters', 'benchmarks', 'pricing', 'canonical_slug',
-            'links', 'alias_target', 'status', 'release_date', 'last_updated',
-            'knowledge', 'source', 'updated_at',
+            'name', 'description', 'family', 'context_window', 'max_output_tokens',
+            'input_modalities', 'output_modalities', 'supports_reasoning',
+            'supports_tools', 'supports_structured_output', 'supports_temperature',
+            'open_weights', 'input_price', 'output_price', 'cache_read_price',
+            'cache_write_price', 'reasoning_config', 'supported_parameters',
+            'pricing_rules', 'release_date', 'last_updated', 'source', 'updated_at',
         ];
     }
 

@@ -15,7 +15,7 @@ class AgentConfigController extends Controller
     {
         $models = $this->resolveModels($config);
         $reasoningEfforts = $models
-            ->flatMap(fn (AiModel $model): array => (array) ($model->reasoning_efforts ?? []))
+            ->flatMap(fn (AiModel $model): array => (array) ($model->reasoning_config['supported_efforts'] ?? []))
             ->filter(fn (string $effort): bool => $effort !== '')
             ->unique()
             ->values();
