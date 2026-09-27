@@ -117,21 +117,6 @@ function Get-RemoteJsonText {
     }
 }
 
-function Convert-ToProviderId {
-    param([Parameter(Mandatory = $true)][string]$Name)
-
-    # Convert display name to the provider key used by [model_providers.<key>].
-    $id = $Name.Trim().ToLowerInvariant()
-    $id = [regex]::Replace($id, '[^a-z0-9_-]+', '-')
-    $id = [regex]::Replace($id, '-{2,}', '-')
-    $id = $id.Trim('-')
-
-    if ([string]::IsNullOrWhiteSpace($id)) {
-        throw "Provider name '$Name' cannot be converted to a provider key."
-    }
-    return $id
-}
-
 function Convert-ToTomlBasicString {
     param([AllowEmptyString()][string]$Value)
     if ($null -eq $Value) { $Value = '' }
@@ -440,115 +425,6 @@ function Update-DesktopReasoningEfforts {
     return $out
 }
 
-function Update-ConfigToml {
-    param([string]$Path)
-
-    $raw = ''
-    if (Test-Path -LiteralPath $Path) {
-        $raw = Get-Content -LiteralPath $Path -Raw -Encoding UTF8
-        if ($null -eq $raw) { $raw = '' }
-    }
-    $raw = $raw -replace "`r`n", "`n"
-    $raw = $raw.TrimEnd("`n")
-
-    $Lines = New-Object System.Collections.Generic.List[string]
-    if ($raw -ne '') {
-        foreach ($line in ($raw -split "`n")) { $Lines.Add($line) }
-    }
-
-    $Out = New-Object System.Collections.Generic.List[string]
-    $Report = New-Object System.Collections.Generic.List[string]
-    $Seen = New-Object System.Collections.Generic.HashSet[string]
-
-    $script:Depth = 0
-    $script:MlState = ''
-    $idx = 0
-    $curSection = ''
-    $skipSection = $false
-    $insAt = 0
-
-    while ($idx -lt $Lines.Count) {
-        $line = $Lines[$idx]
-        $trimmed = $line.Trim()
-        $isHeader = (-not $script:MlState) -and ($script:Depth -eq 0) -and $trimmed.StartsWith('[')
-
-        if ($isHeader) {
-            $hdr = $trimmed
-            $close = $hdr.IndexOf(']')
-            if ($close -gt 0) { $hdr = $hdr.Substring(0, $close + 1) }
-            $hdr = $hdr.TrimStart('[').TrimEnd(']').Trim().Replace('"', '').Replace("'", '')
-            $curSection = $hdr
-            $skipSection = $false
-
-            if ($hdr -eq "model_providers.$($script:ProviderId)" -or
-                $hdr -like "model_providers.$($script:ProviderId).*") {
-                $skipSection = $true
-                $Report.Add("Removed the old [$hdr] (it will be rewritten with the remote provider settings)")
-            } elseif ($hdr -eq 'profiles' -or $hdr -like 'profiles.*') {
-                $skipSection = $true
-                $Report.Add("Removed [$hdr] because profiles can mask model / model_provider settings")
-            }
-
-            Update-ScanState $line
-            $idx++
-            if (-not $skipSection) { $Out.Add($line) }
-            continue
-        }
-
-        if ($curSection -and $skipSection) {
-            Update-ScanState $line
-            $idx++
-            continue
-        }
-
-        $key = Get-TomlKey $line
-
-        if ($key -and $TARGET_KEYS -contains $key) {
-            $oldValue = Get-TomlValue $trimmed
-            $newValue = Get-TargetValue $key
-            Consume-TomlAssignment -Lines $Lines -Index ([ref]$idx)
-            $Out.Add("$key = $newValue")
-            $insAt = $Out.Count
-            [void]$Seen.Add($key)
-            if ($oldValue -ne $newValue) {
-                $Report.Add("Rewrote $key`: $(Format-Val $oldValue) -> $newValue")
-            }
-            continue
-        }
-
-        $Out.Add($line)
-        if ($key) { $insAt = $Out.Count }
-        Update-ScanState $line
-        $idx++
-    }
-
-    $missing = @($TARGET_KEYS | Where-Object { -not $Seen.Contains($_) })
-    $final = New-Object System.Collections.Generic.List[string]
-
-    for ($i = 0; $i -lt $Out.Count; $i++) {
-        if ($i -eq $insAt -and $missing.Count -gt 0) {
-            foreach ($key in $missing) { $final.Add("$key = $(Get-TargetValue $key)") }
-            $missing = @()
-            if ($Out[$i].Trim().StartsWith('[')) { $final.Add('') }
-        }
-        $final.Add($Out[$i])
-    }
-    foreach ($key in $missing) { $final.Add("$key = $(Get-TargetValue $key)") }
-
-    $desktopUpdated = Update-DesktopReasoningEfforts -Lines $final
-    $final = New-Object System.Collections.Generic.List[string]
-    foreach ($line in $desktopUpdated) { $final.Add($line) }
-
-    if ($final.Count -gt 0 -and $final[$final.Count - 1] -ne '') { $final.Add('') }
-    $final.Add("[model_providers.$($script:ProviderId)]")
-    $final.Add("name = $(Convert-ToTomlBasicString $script:ProviderName)")
-    $final.Add("base_url = $(Convert-ToTomlBasicString $script:ProviderApi)")
-    $final.Add('wire_api = "responses"')
-    $final.Add("experimental_bearer_token = $(Convert-ToTomlBasicString $script:ApiKey)")
-
-    return @{ Lines = $final; Report = $Report }
-}
-
 function Update-ConfigTomlOnlyTargetedFields {
     param([string]$Path)
 
@@ -754,8 +630,9 @@ function Invoke-CodexPickerInstall {
 
     Write-Ok "Updated: $ConfigPath"
     Write-Ok "Catalog saved: $ModelsPath"
+    Write-Ok "Model: $($script:ModelSlug) - Reasoning effort: $($script:ModelReasoningEffort)"
     Write-Dim 'Model and reasoning effort were selected from the first catalog model.'
-    Write-Ok "Provider: $($script:ProviderName) -> $($script:ProviderId)"
+    Write-Ok "Provider: $($script:ProviderName)"
     Write-Ok "Provider API: $($script:ProviderApi)"
     Write-Ok "Reasoning efforts: $(if ($script:ReasoningEfforts.Count -gt 0) { $script:ReasoningEfforts -join ', ' } else { '(empty)' })"
 
@@ -763,23 +640,6 @@ function Invoke-CodexPickerInstall {
         Write-Head "Changes made to your existing configuration ($($report.Count) total)"
         foreach ($item in $report) { Write-Host "  - $item" }
     }
-
-    Write-Head 'Configuration written'
-    Write-Host @"
-  model                   = "$($script:ModelSlug)"
-  model_provider         = "$($script:ProviderId)"
-  model_reasoning_effort = "$($script:ModelReasoningEffort)"
-  model_catalog_json     = "$CatalogValue"
-
-  [model_providers.$($script:ProviderId)]
-  name                   = "$($script:ProviderName)"
-  base_url               = "$($script:ProviderApi)"
-  wire_api               = "responses"
-  experimental_bearer_token = "<provided API key>"
-
-  [desktop]
-  enabled-reasoning-efforts = $(Convert-ToTomlArray $script:ReasoningEfforts)
-"@
 
     Write-Host ''
     Write-Ok 'Installation complete.'
@@ -849,7 +709,7 @@ the directory is created, or set CODEX_HOME and try again.
 
         $script:ProviderName = ([string]$remoteConfig.provider.name).Trim()
         $script:ProviderApi  = ([string]$remoteConfig.provider.api).TrimEnd('/')
-        $script:ProviderId   = Convert-ToProviderId $script:ProviderName
+        $script:ProviderId   = "codexpicker"
 
         if ($null -eq $remoteConfig.reasoning_efforts) {
             $script:ReasoningEfforts = @()
@@ -864,7 +724,7 @@ the directory is created, or set CODEX_HOME and try again.
         Die "The remote config was read, but its data is invalid.`n$($_.Exception.Message)"
     }
 
-    Write-Ok "Remote config loaded: $($script:ProviderName) -> $($script:ProviderId)"
+    Write-Ok "Remote config loaded: $($script:ProviderName) ($($script:ProviderApi))"
 
     # 2. Download the catalog and save it without changing its JSON content.
     try {
