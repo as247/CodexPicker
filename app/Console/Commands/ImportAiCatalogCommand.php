@@ -171,7 +171,7 @@ class ImportAiCatalogCommand extends Command
                     ->where('provider_id', $provider->id)
                     ->where('model_id', $attributes['model_id'])->first();
 
-                if ($model !== null) {
+                if ($existingModel !== null) {
                     $this->mergeIntoExisting($existingModel, $attributes);
                     $merged++;
                 }else{
