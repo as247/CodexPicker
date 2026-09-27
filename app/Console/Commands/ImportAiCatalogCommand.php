@@ -139,7 +139,7 @@ class ImportAiCatalogCommand extends Command
                 'context_over_200k' => $cost['context_over_200k'] ?? null,
             ]) : null,
             'release_date' => $model['release_date'] ?? null,
-            'last_updated' => $model['last_updated'] ?? null,
+            'last_updated' => Carbon::parse($model['last_updated']) ?? null,
             'source' => 'all',
             'created_at' => $now,
             'updated_at' => $now,
