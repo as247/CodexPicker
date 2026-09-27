@@ -29,10 +29,13 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-$SCRIPT_VERSION = '2.0.0'
+$SCRIPT_VERSION = '2.1.0'
 $BACKUP_DIRNAME = 'backup-codexpicker'
 $CATALOG_FILENAME = 'codex_picker_models.json'
+$PROVIDER_ID = 'codexpicker'
 $ABORT_SENTINEL = '__CODEXPICKER_SETUP_ABORT__'
+$TARGET_KEYS = @('model', 'model_provider', 'model_reasoning_effort', 'model_catalog_json')
+$PROVIDER_KEYS = @('name', 'base_url', 'wire_api', 'experimental_bearer_token')
 
 function Write-Ok {
     param([string]$Message)
@@ -67,6 +70,7 @@ $ConfigPath   = Join-Path $CodexHomeDir 'config.toml'
 $ModelsPath   = Join-Path $CodexHomeDir $CATALOG_FILENAME
 $BackupDir    = Join-Path $CodexHomeDir $BACKUP_DIRNAME
 $BackupConfig = Join-Path $BackupDir 'config.toml'
+$BackupModels = Join-Path $BackupDir $CATALOG_FILENAME
 $Manifest     = Join-Path $BackupDir 'manifest.txt'
 $CatalogValue = $ModelsPath -replace '\\', '/'
 
@@ -120,7 +124,10 @@ function Get-RemoteJsonText {
 function Convert-ToTomlBasicString {
     param([AllowEmptyString()][string]$Value)
     if ($null -eq $Value) { $Value = '' }
-    return '"' + ($Value -replace '\\', '\\' -replace '"', '\"') + '"'
+    $escaped = $Value.Replace('\', '\\').Replace('"', '\"')
+    $escaped = $escaped.Replace("`n", '\n').Replace("`r", '\r').Replace("`t", '\t')
+    $escaped = $escaped.Replace("`b", '\b').Replace("`f", '\f')
+    return '"' + $escaped + '"'
 }
 
 function Convert-ToTomlArray {
@@ -143,12 +150,17 @@ function Ensure-Backup {
     New-Item -ItemType Directory -Path $BackupDir -Force | Out-Null
 
     $originalConfigExisted = Test-Path -LiteralPath $ConfigPath
+    $originalCatalogExisted = Test-Path -LiteralPath $ModelsPath
 
     if ($originalConfigExisted) {
         Copy-Item -LiteralPath $ConfigPath -Destination $BackupConfig
         Write-Ok "Backed up config.toml -> $BackupConfig"
     } else {
         Write-Warn2 'config.toml not found; a new file will be created'
+    }
+    if ($originalCatalogExisted) {
+        Copy-Item -LiteralPath $ModelsPath -Destination $BackupModels
+        Write-Ok "Backed up $CATALOG_FILENAME -> $BackupModels"
     }
 
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
@@ -158,6 +170,7 @@ function Ensure-Backup {
         "api_endpoint=$ApiEndpoint"
         "installed_at=$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
         "original_config_existed=$(if ($originalConfigExisted) { 1 } else { 0 })"
+        "original_catalog_existed=$(if ($originalCatalogExisted) { 1 } else { 0 })"
     )
     [System.IO.File]::WriteAllText($Manifest, (($manifestLines -join "`n") + "`n"), $utf8NoBom)
 }
@@ -173,15 +186,20 @@ function Invoke-CodexPickerRestore {
     }
 
     $hadConfig = $true
+    $hadCatalog = $false
     $manifestRaw = ''
 
     if (Test-Path -LiteralPath $Manifest) {
         $manifestRaw = Get-Content -LiteralPath $Manifest -Raw -Encoding UTF8
         if ($manifestRaw -match '(?m)^original_config_existed=0\s*$') { $hadConfig = $false }
+        if ($manifestRaw -match '(?m)^original_catalog_existed=1\s*$') { $hadCatalog = $true }
     }
 
     if ($hadConfig -and -not (Test-Path -LiteralPath $BackupConfig)) {
         Die "Backup is corrupted: missing $BackupConfig"
+    }
+    if ($hadCatalog -and -not (Test-Path -LiteralPath $BackupModels)) {
+        Die "Backup is corrupted: missing $BackupModels"
     }
     Write-Host ''
     Write-Host 'The following actions will be performed:'
@@ -191,7 +209,8 @@ function Invoke-CodexPickerRestore {
         Write-Host "  1. Delete $ConfigPath"
         Write-Dim '     (config.toml did not exist before installation)'
     }
-    Write-Host "  2. Delete $ModelsPath"
+    if ($hadCatalog) { Write-Host "  2. Restore $ModelsPath from $BackupModels" }
+    else { Write-Host "  2. Delete $ModelsPath" }
     Write-Host "  3. Delete the backup directory $BackupDir"
     Write-Host ''
 
@@ -209,7 +228,10 @@ function Invoke-CodexPickerRestore {
         Write-Ok 'config.toml deleted'
     }
 
-    if (Test-Path -LiteralPath $ModelsPath) {
+    if ($hadCatalog) {
+        Copy-Item -LiteralPath $BackupModels -Destination $ModelsPath -Force
+        Write-Ok "$CATALOG_FILENAME restored"
+    } elseif (Test-Path -LiteralPath $ModelsPath) {
         Remove-Item -LiteralPath $ModelsPath -Force
         Write-Ok "$CATALOG_FILENAME deleted"
     }
@@ -221,20 +243,6 @@ function Invoke-CodexPickerRestore {
     Write-Ok 'Restore complete; the Codex configuration is back to its pre-install state.'
     Write-Host ''
     Write-Warn2 'Fully quit the ChatGPT desktop app / Codex client and reopen it for the restore to take effect'
-}
-
-function Offer-CodexPickerRestore {
-    if (-not (Test-Path -LiteralPath $BackupDir)) { return $false }
-
-    Write-Host ''
-    Write-Host 'A CodexPicker backup exists. You can restore it before continuing.'
-    Write-Host "  Backup: $BackupDir"
-    $answer = Read-Host 'Restore the pre-CodexPicker configuration now? Type y to restore, anything else to continue'
-    if ($answer -in @('y', 'Y', 'yes', 'YES')) {
-        Invoke-CodexPickerRestore
-        return $true
-    }
-    return $false
 }
 
 # ---------------------------------------------------------------- TOML scanner
@@ -308,15 +316,6 @@ function Format-Val {
     if ($Value.Length -gt 58) { return $Value.Substring(0, 58) + '...' }
     return $Value
 }
-
-$TARGET_KEYS = @(
-    'model',
-    'model_provider',
-    'model_reasoning_effort',
-    'model_catalog_json'
-)
-
-$PROVIDER_KEYS = @('name', 'base_url', 'wire_api', 'experimental_bearer_token')
 
 function Get-TargetValue {
     param([string]$Key)
@@ -393,9 +392,9 @@ function Update-DesktopReasoningEfforts {
             continue
         }
 
-        if ($inDesktop -and (Get-TomlKey $line) -eq 'enabled-reasoning-efforts') {
+        if ($inDesktop -and -not $script:MlState -and $script:Depth -eq 0 -and (Get-TomlKey $line) -eq 'enabled-reasoning-efforts') {
             Consume-TomlAssignment -Lines $Lines -Index ([ref]$i)
-            $out.Add($replacement)
+            if (-not $seen) { $out.Add($replacement) }
             $seen = $true
             continue
         }
@@ -488,12 +487,12 @@ function Update-ConfigTomlOnlyTargetedFields {
             continue
         }
 
-        $key = Get-TomlKey $line
+        $key = if (-not $script:MlState -and $script:Depth -eq 0) { Get-TomlKey $line } else { '' }
         if ($currentSection -eq '' -and $key -and $TARGET_KEYS -contains $key) {
             $oldValue = Get-TomlValue $trimmed
             $newValue = Get-TargetValue $key
             Consume-TomlAssignment -Lines $Lines -Index ([ref]$idx)
-            $Out.Add("$key = $newValue")
+            if (-not $SeenTop.Contains($key)) { $Out.Add("$key = $newValue") }
             [void]$SeenTop.Add($key)
             if ($oldValue -ne $newValue) { $Report.Add("Rewrote $key`: $(Format-Val $oldValue) -> $newValue") }
             continue
@@ -503,7 +502,7 @@ function Update-ConfigTomlOnlyTargetedFields {
             $oldValue = Get-TomlValue $trimmed
             $newValue = Get-ProviderTargetValue $key
             Consume-TomlAssignment -Lines $Lines -Index ([ref]$idx)
-            $Out.Add("$key = $newValue")
+            if (-not $SeenProvider.Contains($key)) { $Out.Add("$key = $newValue") }
             [void]$SeenProvider.Add($key)
             if ($oldValue -ne $newValue) { $Report.Add("Rewrote [$providerSection].$key`: $(Format-Val $oldValue) -> $newValue") }
             continue
@@ -546,7 +545,7 @@ function Assert-NoDuplicateTopLevelKeys {
         $trimmed = $line.Trim()
         if (-not $ml -and $depth -eq 0 -and $trimmed.StartsWith('[')) { $inLeading = $false }
 
-        if ($inLeading) {
+        if ($inLeading -and -not $ml -and $depth -eq 0) {
             $key = Get-TomlKey $line
             if ($key) {
                 if ($seen.ContainsKey($key)) { throw "Generated config.toml has a duplicate top-level key: $key" }
@@ -618,6 +617,8 @@ function Invoke-CodexPickerInstall {
         "config_id=$ConfigId"
         "api_endpoint=$ApiEndpoint"
         "installed_at=$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+        "original_config_existed=$(if (Test-Path -LiteralPath $BackupConfig) { 1 } else { 0 })"
+        "original_catalog_existed=$(if (Test-Path -LiteralPath $BackupModels) { 1 } else { 0 })"
         "provider_name=$($script:ProviderName)"
         "provider_id=$($script:ProviderId)"
         "provider_api=$($script:ProviderApi)"
@@ -670,30 +671,14 @@ the directory is created, or set CODEX_HOME and try again.
 "@
     }
 
-    if (Offer-CodexPickerRestore) { return }
-
-    # 1. Read remote config before modifying any local config.
+    # Read and validate both API documents before offering installation.
     $encodedId = [Uri]::EscapeDataString($ConfigId)
     $configUrl = "$script:ApiEndpoint/config/$encodedId"
     $modelsUrl = "$script:ApiEndpoint/config/$encodedId/models"
 
-    $remoteConfig = $null
+    $apiError = ''
     try {
         $remoteConfig = Get-RemoteJson -Url $configUrl -Description "remote config for id '$ConfigId'"
-    } catch {
-        Write-Host ''
-        Write-Warn2 $_.Exception.Message
-
-        if (Test-Path -LiteralPath $BackupDir) {
-            [void](Offer-CodexPickerRestore)
-            return
-        }
-
-        Die 'Remote config could not be read and no backup exists. Nothing was modified.'
-    }
-
-    # Validate provider config.
-    try {
         if ($null -eq $remoteConfig.provider) { throw "Response is missing 'provider'." }
         if ([string]::IsNullOrWhiteSpace([string]$remoteConfig.provider.name)) {
             throw "Response is missing 'provider.name'."
@@ -709,7 +694,7 @@ the directory is created, or set CODEX_HOME and try again.
 
         $script:ProviderName = ([string]$remoteConfig.provider.name).Trim()
         $script:ProviderApi  = ([string]$remoteConfig.provider.api).TrimEnd('/')
-        $script:ProviderId   = "codexpicker"
+        $script:ProviderId   = $PROVIDER_ID
 
         if ($null -eq $remoteConfig.reasoning_efforts) {
             $script:ReasoningEfforts = @()
@@ -720,14 +705,8 @@ the directory is created, or set CODEX_HOME and try again.
                     Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
             )
         }
-    } catch {
-        Die "The remote config was read, but its data is invalid.`n$($_.Exception.Message)"
-    }
+        Write-Ok "Remote config loaded: $($script:ProviderName) ($($script:ProviderApi))"
 
-    Write-Ok "Remote config loaded: $($script:ProviderName) ($($script:ProviderApi))"
-
-    # 2. Download the catalog and save it without changing its JSON content.
-    try {
         $catalogJson = Get-RemoteJsonText -Url $modelsUrl -Description "model catalog for config id '$ConfigId'"
         $catalogObject = $catalogJson | ConvertFrom-Json
         if ($null -eq $catalogObject.models -or @($catalogObject.models).Count -eq 0) {
@@ -745,11 +724,34 @@ the directory is created, or set CODEX_HOME and try again.
         $script:ModelReasoningEffort = if ($firstEffort) { $firstEffort } else { 'none' }
         $script:CatalogJson = $catalogJson
     } catch {
-        Die "Failed to download/validate the model catalog.`n$($_.Exception.Message)`nconfig.toml has not been modified."
+        $apiError = $_.Exception.Message
     }
 
-    # 3. API key -> backup -> config.
-    Invoke-CodexPickerInstall
+    $hasBackup = Test-Path -LiteralPath $BackupDir -PathType Container
+    if ($apiError) {
+        Write-Warn2 $apiError
+        if (-not $hasBackup) {
+            Die 'API failed and no backup exists. Nothing was modified.'
+        }
+        Write-Host '  0. Restore from backup'
+        $choice = Read-Host 'Choose 0 to restore, anything else to cancel'
+        if ($choice -eq '0') { Invoke-CodexPickerRestore }
+        else { Write-Host 'Cancelled; nothing was modified.' }
+        return
+    }
+
+    Write-Host ''
+    Write-Host '  1. Install this config'
+    if ($hasBackup) { Write-Host '  0. Restore from backup' }
+    $choice = Read-Host 'Choose an option (anything else cancels)'
+    switch ($choice) {
+        '1' { Invoke-CodexPickerInstall }
+        '0' {
+            if (-not $hasBackup) { Die 'No backup exists.' }
+            Invoke-CodexPickerRestore
+        }
+        default { Write-Host 'Cancelled; nothing was modified.' }
+    }
 }
 
 try {
