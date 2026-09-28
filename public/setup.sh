@@ -55,13 +55,8 @@ restore() {
     [ -d "$BACKUP_DIR" ] || die "Backup directory not found: $BACKUP_DIR"
     HAD_CONFIG=1
     if [ -f "$MANIFEST" ] && grep -q '^original_config_existed=0$' "$MANIFEST"; then HAD_CONFIG=0; fi
-    HAD_CATALOG=0
-    if [ -f "$MANIFEST" ] && grep -q '^original_catalog_existed=1$' "$MANIFEST"; then HAD_CATALOG=1; fi
     if [ "$HAD_CONFIG" -eq 1 ] && [ ! -f "$BACKUP_CONFIG" ]; then
         die "Backup is incomplete: $BACKUP_CONFIG is missing."
-    fi
-    if [ "$HAD_CATALOG" -eq 1 ] && [ ! -f "$BACKUP_MODELS" ]; then
-        die "Backup is incomplete: $BACKUP_MODELS is missing."
     fi
     printf '\nRestore will update %s and %s, then remove %s.\n' "$CONFIG_PATH" "$MODELS_PATH" "$BACKUP_DIR"
     ask 'Restore now? Type y to continue, anything else to cancel:'
@@ -73,7 +68,8 @@ restore() {
         rm -f "$CONFIG_PATH" || die 'Could not remove config.toml.'
         ok 'config.toml removed'
     fi
-    if [ "$HAD_CATALOG" -eq 1 ]; then
+    # Older installers may have saved a catalog; restore it when available.
+    if [ -f "$BACKUP_MODELS" ]; then
         cp "$BACKUP_MODELS" "$MODELS_PATH" || die 'Could not restore the model catalog.'
         ok 'Model catalog restored'
     else
@@ -262,6 +258,7 @@ fi
 
 # Preserve the first pre-CodexPicker snapshot while switching config IDs.
 if [ ! -e "$BACKUP_DIR" ]; then
+    [ ! -e "$MODELS_PATH" ] || die "$MODELS_PATH already exists. Move it aside before the first install; this script only backs up config.toml."
     mkdir "$BACKUP_DIR" || die 'Could not create the backup directory.'
     if [ -f "$CONFIG_PATH" ]; then
         cp "$CONFIG_PATH" "$BACKUP_CONFIG" || die 'Could not back up config.toml.'
@@ -269,24 +266,12 @@ if [ ! -e "$BACKUP_DIR" ]; then
     else
         ORIGINAL_CONFIG_EXISTED=0
     fi
-    if [ -f "$MODELS_PATH" ]; then
-        cp "$MODELS_PATH" "$BACKUP_MODELS" || die 'Could not back up the model catalog.'
-        ORIGINAL_CATALOG_EXISTED=1
-    else
-        ORIGINAL_CATALOG_EXISTED=0
-    fi
+    {
+        printf 'script_version=%s\nconfig_id=%s\napi_endpoint=%s\n' "$SCRIPT_VERSION" "$CONFIG_ID" "$API_ENDPOINT"
+        printf 'installed_at=%s\noriginal_config_existed=%s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$ORIGINAL_CONFIG_EXISTED"
+    } > "$MANIFEST" || die 'Could not write the backup manifest.'
 else
     [ -d "$BACKUP_DIR" ] || die 'The backup path is not a directory.'
-    if [ -f "$MANIFEST" ] && grep -q '^original_config_existed=0$' "$MANIFEST"; then
-        ORIGINAL_CONFIG_EXISTED=0
-    else
-        ORIGINAL_CONFIG_EXISTED=1
-    fi
-    if [ -f "$MANIFEST" ] && grep -q '^original_catalog_existed=1$' "$MANIFEST"; then
-        ORIGINAL_CATALOG_EXISTED=1
-    else
-        ORIGINAL_CATALOG_EXISTED=0
-    fi
     ok "Existing backup preserved: $BACKUP_DIR"
 fi
 
@@ -294,14 +279,6 @@ cp "$REMOTE_MODELS" "$MODELS_PATH.codexpicker-tmp" || die 'Could not save the mo
 mv -f "$MODELS_PATH.codexpicker-tmp" "$MODELS_PATH" || die 'Could not replace the model catalog.'
 cp "$UPDATED_CONFIG" "$CONFIG_PATH.codexpicker-tmp" || die 'Could not save config.toml.'
 mv -f "$CONFIG_PATH.codexpicker-tmp" "$CONFIG_PATH" || die 'Could not replace config.toml.'
-{
-    printf 'script_version=%s\nconfig_id=%s\napi_endpoint=%s\n' "$SCRIPT_VERSION" "$CONFIG_ID" "$API_ENDPOINT"
-    printf 'installed_at=%s\noriginal_config_existed=%s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$ORIGINAL_CONFIG_EXISTED"
-    printf 'original_catalog_existed=%s\n' "$ORIGINAL_CATALOG_EXISTED"
-    printf 'provider_name=%s\nprovider_id=%s\nprovider_api=%s\n' "$PROVIDER_NAME" "$PROVIDER_ID" "$PROVIDER_API"
-    printf 'catalog_path=%s\nreasoning_efforts=%s\n' "$MODELS_PATH" "$REASONING_EFFORTS"
-} > "$MANIFEST.codexpicker-tmp" || die 'Could not write the backup manifest.'
-mv -f "$MANIFEST.codexpicker-tmp" "$MANIFEST" || die 'Could not replace the backup manifest.'
 ok "Updated: $CONFIG_PATH"
 ok "Catalog saved: $MODELS_PATH"
 ok "Model: $MODEL_SLUG - Reasoning effort: $MODEL_EFFORT"

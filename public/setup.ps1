@@ -140,17 +140,20 @@ function Convert-ToTomlArray {
 # ---------------------------------------------------------------- backup / restore
 
 function Ensure-Backup {
-    # A backup is a one-time snapshot of the pre-CodexPicker config. Never
-    # replace it or create another snapshot on later runs.
+    # Snapshot the config before the first CodexPicker install. Later installs
+    # must leave both the snapshot and its manifest untouched.
     if (Test-Path -LiteralPath $BackupDir) {
-        Write-Dim "Existing backup preserved: $BackupConfig"
+        Write-Dim "Existing backup preserved: $BackupDir"
         return
+    }
+
+    if (Test-Path -LiteralPath $ModelsPath) {
+        Die "$ModelsPath already exists. Move it aside before the first install; this script only backs up config.toml."
     }
 
     New-Item -ItemType Directory -Path $BackupDir -Force | Out-Null
 
     $originalConfigExisted = Test-Path -LiteralPath $ConfigPath
-    $originalCatalogExisted = Test-Path -LiteralPath $ModelsPath
 
     if ($originalConfigExisted) {
         Copy-Item -LiteralPath $ConfigPath -Destination $BackupConfig
@@ -158,11 +161,6 @@ function Ensure-Backup {
     } else {
         Write-Warn2 'config.toml not found; a new file will be created'
     }
-    if ($originalCatalogExisted) {
-        Copy-Item -LiteralPath $ModelsPath -Destination $BackupModels
-        Write-Ok "Backed up $CATALOG_FILENAME -> $BackupModels"
-    }
-
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     $manifestLines = @(
         "script_version=$SCRIPT_VERSION"
@@ -170,7 +168,6 @@ function Ensure-Backup {
         "api_endpoint=$ApiEndpoint"
         "installed_at=$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
         "original_config_existed=$(if ($originalConfigExisted) { 1 } else { 0 })"
-        "original_catalog_existed=$(if ($originalCatalogExisted) { 1 } else { 0 })"
     )
     [System.IO.File]::WriteAllText($Manifest, (($manifestLines -join "`n") + "`n"), $utf8NoBom)
 }
@@ -186,20 +183,15 @@ function Invoke-CodexPickerRestore {
     }
 
     $hadConfig = $true
-    $hadCatalog = $false
     $manifestRaw = ''
 
     if (Test-Path -LiteralPath $Manifest) {
         $manifestRaw = Get-Content -LiteralPath $Manifest -Raw -Encoding UTF8
         if ($manifestRaw -match '(?m)^original_config_existed=0\s*$') { $hadConfig = $false }
-        if ($manifestRaw -match '(?m)^original_catalog_existed=1\s*$') { $hadCatalog = $true }
     }
 
     if ($hadConfig -and -not (Test-Path -LiteralPath $BackupConfig)) {
         Die "Backup is corrupted: missing $BackupConfig"
-    }
-    if ($hadCatalog -and -not (Test-Path -LiteralPath $BackupModels)) {
-        Die "Backup is corrupted: missing $BackupModels"
     }
     Write-Host ''
     Write-Host 'The following actions will be performed:'
@@ -209,7 +201,8 @@ function Invoke-CodexPickerRestore {
         Write-Host "  1. Delete $ConfigPath"
         Write-Dim '     (config.toml did not exist before installation)'
     }
-    if ($hadCatalog) { Write-Host "  2. Restore $ModelsPath from $BackupModels" }
+    # Older installers may have saved a catalog; use that snapshot if present.
+    if (Test-Path -LiteralPath $BackupModels) { Write-Host "  2. Restore $ModelsPath from $BackupModels" }
     else { Write-Host "  2. Delete $ModelsPath" }
     Write-Host "  3. Delete the backup directory $BackupDir"
     Write-Host ''
@@ -228,7 +221,7 @@ function Invoke-CodexPickerRestore {
         Write-Ok 'config.toml deleted'
     }
 
-    if ($hadCatalog) {
+    if (Test-Path -LiteralPath $BackupModels) {
         Copy-Item -LiteralPath $BackupModels -Destination $ModelsPath -Force
         Write-Ok "$CATALOG_FILENAME restored"
     } elseif (Test-Path -LiteralPath $ModelsPath) {
@@ -611,23 +604,6 @@ function Invoke-CodexPickerInstall {
     }
 
     Move-Item -LiteralPath $TmpConfig -Destination $ConfigPath -Force
-
-    $manifestLines = @(
-        "script_version=$SCRIPT_VERSION"
-        "config_id=$ConfigId"
-        "api_endpoint=$ApiEndpoint"
-        "installed_at=$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-        "original_config_existed=$(if (Test-Path -LiteralPath $BackupConfig) { 1 } else { 0 })"
-        "original_catalog_existed=$(if (Test-Path -LiteralPath $BackupModels) { 1 } else { 0 })"
-        "provider_name=$($script:ProviderName)"
-        "provider_id=$($script:ProviderId)"
-        "provider_api=$($script:ProviderApi)"
-        "catalog_path=$ModelsPath"
-        "reasoning_efforts=$(($script:ReasoningEfforts -join ','))"
-        '--- changes made to config.toml ---'
-    ) + @($report)
-
-    [System.IO.File]::WriteAllText($Manifest, (($manifestLines -join "`n") + "`n"), $utf8NoBom)
 
     Write-Ok "Updated: $ConfigPath"
     Write-Ok "Catalog saved: $ModelsPath"
