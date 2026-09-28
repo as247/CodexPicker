@@ -586,8 +586,6 @@ function Invoke-CodexPickerInstall {
         Remove-Item -LiteralPath $tmpCatalog -Force -ErrorAction SilentlyContinue
         Die "Failed to save the model catalog to $ModelsPath.`n$($_.Exception.Message)`nconfig.toml has not been modified."
     }
-    Write-Ok "Model catalog saved unchanged: $ModelsPath"
-
     $result = Update-ConfigTomlOnlyTargetedFields -Path $ConfigPath
     $final = $result.Lines
     $report = $result.Report
@@ -716,16 +714,18 @@ the directory is created, or set CODEX_HOME and try again.
         return
     }
 
+    if (-not $hasBackup) {
+        Invoke-CodexPickerInstall
+        return
+    }
+
     Write-Host ''
     Write-Host '  1. Install this config'
-    if ($hasBackup) { Write-Host '  0. Restore from backup' }
+    Write-Host '  0. Restore from backup'
     $choice = Read-Host 'Choose an option (anything else cancels)'
     switch ($choice) {
         '1' { Invoke-CodexPickerInstall }
-        '0' {
-            if (-not $hasBackup) { Die 'No backup exists.' }
-            Invoke-CodexPickerRestore
-        }
+        '0' { Invoke-CodexPickerRestore }
         default { Write-Host 'Cancelled; nothing was modified.' }
     }
 }

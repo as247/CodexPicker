@@ -134,14 +134,15 @@ MODEL_EFFORT=$(jq -r '[.models[0].supported_reasoning_levels[]?.effort | select(
 REASONING_EFFORTS=$(jq -r '[.reasoning_efforts[]? | select(type == "string" and length > 0)] | join(",")' "$REMOTE_CONFIG")
 
 printf '\nRemote config: %s (%s)\n' "$PROVIDER_NAME" "$PROVIDER_API"
-printf '1. Install this config\n'
-[ -d "$BACKUP_DIR" ] && printf '0. Restore from backup\n'
-ask 'Choose an option (anything else cancels):'
-case $ANSWER in
-    1) ;;
-    0) [ -d "$BACKUP_DIR" ] || die 'No backup exists.'; restore; exit 0 ;;
-    *) printf 'Cancelled; nothing was modified.\n'; exit 0 ;;
-esac
+if [ -d "$BACKUP_DIR" ]; then
+    printf '1. Install this config\n0. Restore from backup\n'
+    ask 'Choose an option (anything else cancels):'
+    case $ANSWER in
+        1) ;;
+        0) restore; exit 0 ;;
+        *) printf 'Cancelled; nothing was modified.\n'; exit 0 ;;
+    esac
+fi
 
 ask 'Enter your provider API key:'
 API_KEY=$ANSWER
