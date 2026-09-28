@@ -23,7 +23,7 @@ param(
     [string]$ConfigId,
 
     [Parameter(Mandatory = $false)]
-    [string]$ApiEndpoint = 'http://codexpicker.test/api/v1'
+    [string]$ApiEndpoint = 'https://codexpicker.top/api/v1'
 )
 
 $ErrorActionPreference = 'Stop'

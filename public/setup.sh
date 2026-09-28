@@ -4,7 +4,7 @@
 
 set -u
 SCRIPT_VERSION='2.1.0'
-DEFAULT_API_ENDPOINT='http://codexpicker.test/api/v1'
+DEFAULT_API_ENDPOINT='https://codexpicker.top/api/v1'
 PROVIDER_ID='codexpicker'
 PROVIDER_SECTION=model_providers.$PROVIDER_ID
 TOP_KEYS='model model_provider model_reasoning_effort model_catalog_json'
