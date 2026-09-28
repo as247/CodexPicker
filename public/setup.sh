@@ -24,7 +24,11 @@ ok() { printf '[OK] %s\n' "$1"; }
 warn() { printf '[!]  %s\n' "$1"; }
 die() { printf '\n[X] %s\n' "$1" >&2; exit 1; }
 usage() { printf 'Usage: ./setup.sh <config-id> [--api-endpoint URL]\n'; }
-ask() { printf '%s ' "$1"; IFS= read -r ANSWER || die 'Cannot read input.'; }
+ask() {
+    printf '%s ' "$1"
+    # stdin may contain this script (curl | bash), so read from the terminal.
+    IFS= read -r ANSWER </dev/tty || die 'An interactive terminal is required for input.'
+}
 
 if [ "${1:-}" = '--help' ] || [ "${1:-}" = '-h' ]; then usage; exit 0; fi
 if [ "$#" -eq 1 ]; then
