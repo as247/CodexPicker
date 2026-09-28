@@ -150,7 +150,11 @@ new class extends Component
 
         return [
             'windows' => sprintf('& ([scriptblock]::Create((irm "%s"))) %s',url('setup.ps1'),$configId),
-            'linux' => './setup.sh '.$configId,
+            'linux' => sprintf(
+                'curl -fsSL %s | bash -s -- %s',
+                url('setup.sh'),
+                escapeshellarg($configId)
+            ),
         ];
     }
 
