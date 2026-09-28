@@ -28,6 +28,9 @@
     </flux:brand>
 
     <flux:navbar class="-mb-px max-lg:hidden">
+        <flux:navbar.item :href="route('home')" :current="request()->routeIs('home')" wire:navigate>
+            {{ __('Home') }}
+        </flux:navbar.item>
         <flux:navbar.item :href="route('providers')" :current="request()->routeIs('providers')" wire:navigate>
             {{ __('Providers') }}
         </flux:navbar.item>
@@ -35,26 +38,14 @@
 
     <flux:spacer />
 
-    <flux:navbar class="me-4">
-        <flux:navbar.item icon="magnifying-glass" href="#" :label="__('Search')" />
-    </flux:navbar>
-
-    <flux:dropdown position="top" align="start">
-        <flux:profile />
-
-        <flux:menu>
-            <flux:menu.separator />
-
-            <flux:menu.item icon="arrow-right-start-on-rectangle">
-                {{ __('Logout') }}
-            </flux:menu.item>
-        </flux:menu>
-    </flux:dropdown>
+    <flux:button variant="primary" size="sm" :href="route('providers')" wire:navigate icon="arrow-right" class="!rounded-lg">
+        {{ __('Browse models') }}
+    </flux:button>
 </flux:header>
 
 <flux:sidebar sticky collapsible="mobile" class="lg:hidden bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-700">
     <flux:sidebar.header>
-        <flux:brand href="#" name="CodexPicker">
+        <flux:brand :href="route('home')" name="CodexPicker">
             <x-slot name="logo" class="size-6 rounded-full bg-cyan-500 text-white text-xs font-bold">
                 <flux:icon name="rocket-launch" variant="micro" />
             </x-slot>
@@ -64,8 +55,11 @@
     </flux:sidebar.header>
 
     <flux:sidebar.nav>
-        <flux:sidebar.item icon="home" :current="request()->routeIs('dashboard')" wire:navigate>
-            {{ __('Dashboard') }}
+        <flux:sidebar.item icon="home" :href="route('home')" :current="request()->routeIs('home')" wire:navigate>
+            {{ __('Home') }}
+        </flux:sidebar.item>
+        <flux:sidebar.item icon="squares-2x2" :href="route('providers')" :current="request()->routeIs('providers')" wire:navigate>
+            {{ __('Providers') }}
         </flux:sidebar.item>
     </flux:sidebar.nav>
 
