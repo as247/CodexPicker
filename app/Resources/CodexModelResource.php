@@ -35,7 +35,7 @@ class CodexModelResource extends JsonResource
             'slug' => $this->resource->model_id,
             'display_name' => $this->resource->name,
             'description' => $this->resource->description ?? $this->resource->name,
-            'context_window' => $this->resource->context_window,
+            'context_window' => intval(0.8 * $this->resource->context_window),
             'max_context_window' => $this->resource->context_window,
             'input_modalities' => $this->inputModalities(),
             'default_reasoning_level' => $this->defaultReasoningLevel(),
@@ -43,6 +43,7 @@ class CodexModelResource extends JsonResource
             'default_reasoning_summary' => $this->defaultReasoningSummary(),
             'use_responses_lite' => false,
             'tool_call' => $this->resource->supports_tools,
+            'tool_mode' => null,
         ];
 
         return $this->mergeWithDefaults($defaults, $mapped);
@@ -96,7 +97,6 @@ class CodexModelResource extends JsonResource
         return $inputs;
     }
 
-
     private function defaultReasoningLevel(): ?string
     {
         if (! $this->resource->supports_reasoning) {
@@ -149,5 +149,4 @@ class CodexModelResource extends JsonResource
     {
         return is_array($this->resource->reasoning_config) ? $this->resource->reasoning_config : [];
     }
-
 }
