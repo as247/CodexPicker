@@ -40,7 +40,7 @@ class AgentConfigController extends Controller
                 ->all(),
         ];
 
-        return response()->json($payload);
+        return response()->json($payload, options: JSON_PRETTY_PRINT);
     }
 
     /**
