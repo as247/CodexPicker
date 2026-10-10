@@ -19,6 +19,7 @@ use Illuminate\Support\Arr;
  */
 class CodexModelResource extends JsonResource
 {
+    protected $templateModel='gpt-6.1-sol';
     public function __construct(AiModel $resource)
     {
         parent::__construct($resource);
@@ -78,12 +79,19 @@ class CodexModelResource extends JsonResource
 
         /** @var array{models: list<array<string, mixed>>}|null $template */
         $template = json_decode($contents, true);
+        $models=$template['models']??[];
 
-        if (($template['models'][0] ?? null) === null) {
+        if (!is_array($models) || !($models)) {
             throw new \RuntimeException('Codex template does not contain a model definition.');
         }
+        foreach ($models as $model){
+            $slug=$model['slug']??'';
+            if($slug===$this->templateModel){
+                return $model;
+            }
+        }
+        throw new \RuntimeException('Model not found.');
 
-        return $template['models'][0];
     }
 
     /**
