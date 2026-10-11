@@ -6,6 +6,7 @@ use Database\Factories\AgentConfigFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Prunable;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
@@ -25,6 +26,7 @@ class AgentConfig extends Model
 {
     /** @use HasFactory<AgentConfigFactory> */
     use HasFactory;
+    use Prunable;
 
     #[Fillable([
         'agent', 'model_ids','live_model_ids', 'provider_name', 'provider_api', 'probe_models',
@@ -56,6 +58,10 @@ class AgentConfig extends Model
                 $config->id = (string) Str::ulid();
             }
         });
+    }
+    public function prunable()
+    {
+        return static::query()->where('updated_at','<',now()->subMonths(1));
     }
 
 }
